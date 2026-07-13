@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  # 银行审计多智能体平台
+  bank-audit-agents:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: bank-audit-agents
+    ports:
+      - "8501:8501"  # Web UI
+      - "8080:8080"  # API
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - DEFAULT_LLM_MODEL=${DEFAULT_LLM_MODEL:-gpt-4o}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - REDIS_ENABLE=false
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis (可选，用于缓存和任务队列)
+  redis:
+    image: redis:7-alpine
+    container_name: bank-audit-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    profiles:
+      - with-redis
+
+volumes:
+  redis_data:
