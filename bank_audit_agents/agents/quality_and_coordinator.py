@@ -1,18 +1,27 @@
 """
-质量审核智能体和任务协调智能体 - 优化版
+质量审核和任务协调智能体模块
 
-优化内容:
-1. 分离质量审核智能体，专注质量控制
-2. 完善质量检查标准
-3. 优化任务协调智能体
-4. 增强类型安全
-5. LLM 驱动质量检查（mock 模式回退到规则评分）
+负责协调多智能体任务执行流程，确保审计质量和任务协作。
+
+核心能力:
+    1. 任务调度和分配
+    2. 多智能体协作协调
+    3. 审计质量检查和评估
+    4. 任务依赖管理和工作流编排
+    5. 进度监控和状态追踪
+
+质量检查维度:
+    - 结果准确性（数据正确性、逻辑一致性）
+    - 完整性（是否覆盖所有要求）
+    - 规范性（是否符合格式要求）
+    - 时效性（是否在规定时间内完成）
+
+工作模式:
+    - LLM 模式：使用 LLM 进行智能质量评估和任务协调
+    - Mock 模式：未配置 API Key 时，返回示例协调结果
 """
 
-import json
-from typing import Any, Dict, List, Optional, Tuple
-from dataclasses import dataclass
-from collections import defaultdict
+from typing import Any, Dict, List, Optional
 
 from bank_audit_agents.core.base_agent import (
     AgentResult,
@@ -23,554 +32,564 @@ from bank_audit_agents.core.base_agent import (
 from bank_audit_agents.utils.logger import get_logger
 from bank_audit_agents.utils.llm_client import get_llm_client
 
+# 获取模块级日志记录器
 logger = get_logger(__name__)
 
 
-class QualityIssueLevel(str):
-    """质量问题等级"""
-    CRITICAL = "critical"
-    MAJOR = "major"
-    MINOR = "minor"
-    SUGGESTION = "suggestion"
+# 质量评估标准（模拟）
+QUALITY_STANDARDS = {
+    # 结果准确性标准
+    "accuracy": {
+        "name": "准确性",
+        "weight": 0.35,
+        "criteria": [
+            "数据提取是否准确",
+            "风险评估是否合理",
+            "合规判断是否正确",
+            "结论是否有依据",
+        ],
+    },
+    # 完整性标准
+    "completeness": {
+        "name": "完整性",
+        "weight": 0.25,
+        "criteria": [
+            "是否覆盖所有检查点",
+            "是否遗漏重要信息",
+            "建议是否全面",
+            "文档是否齐全",
+        ],
+    },
+    # 规范性标准
+    "standardization": {
+        "name": "规范性",
+        "weight": 0.20,
+        "criteria": [
+            "格式是否符合要求",
+            "语言是否专业",
+            "结构是否清晰",
+            "是否遵循审计标准",
+        ],
+    },
+    # 时效性标准
+    "timeliness": {
+        "name": "时效性",
+        "weight": 0.20,
+        "criteria": [
+            "是否在规定时间内完成",
+            "是否按时提交结果",
+        ],
+    },
+}
 
 
-@dataclass
-class QualityIssue:
-    """质量问题"""
-    issue_id: str
-    level: str
-    category: str
-    description: str
-    suggestion: str = ""
-    location: str = ""
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "issue_id": self.issue_id,
-            "level": self.level,
-            "category": self.category,
-            "description": self.description,
-            "suggestion": self.suggestion,
-            "location": self.location,
-        }
-
-
-class QualityStandard:
-    """质量检查标准"""
-
-    STANDARDS = {
-        "completeness": {
-            "name": "完整性检查",
-            "weight": 0.25,
-            "description": "检查信息是否完整，必填项是否填写",
-        },
-        "accuracy": {
-            "name": "准确性检查",
-            "weight": 0.25,
-            "description": "检查数据、引用、金额是否准确",
-        },
-        "consistency": {
-            "name": "一致性检查",
-            "weight": 0.20,
-            "description": "检查前后表述是否一致",
-        },
-        "clarity": {
-            "name": "清晰度检查",
-            "weight": 0.15,
-            "description": "检查表述是否清晰易懂",
-        },
-        "compliance": {
-            "name": "合规性检查",
-            "weight": 0.15,
-            "description": "检查是否符合审计规范",
-        },
-    }
-
-    @classmethod
-    def get_total_weight(cls) -> float:
-        return sum(s["weight"] for s in cls.STANDARDS.values())
-
-
-class QualityAuditorAgent(BaseAgent):
+class QualityAndCoordinatorAgent(BaseAgent):
     """
-    质量审核智能体
+    质量审核和任务协调智能体
 
-    核心能力:
-    1. 审核其他智能体的输出质量
-    2. 检查信息完整性和准确性
-    3. 验证风险评估合理性
-    4. 确保报告格式规范统一
-    5. 交叉验证关键数据
+    继承自 BaseAgent，实现质量审核和任务协调的核心业务逻辑。
+
+    核心职责:
+        1. 协调多智能体的任务执行顺序
+        2. 检查各智能体输出结果的质量
+        3. 评估审计工作的整体质量
+        4. 处理任务依赖关系
+        5. 监控任务执行进度
+
+    输入数据要求:
+        - task_type: 任务类型（quality_check/coordination/progress_monitor）
+        - agent_results: 各智能体的执行结果
+        - task_context: 任务上下文（包含任务依赖、优先级等）
     """
 
     def __init__(self, agent_id: Optional[str] = None, **kwargs):
-        super().__init__(AgentType.QUALITY_AUDITOR, agent_id, **kwargs)
-        self.audit_history: List[Dict[str, Any]] = []
+        """
+        初始化质量审核和任务协调智能体
+
+        Args:
+            agent_id: 智能体 ID（可选，不提供则自动生成）
+            **kwargs: 其他传递给父类的参数
+        """
+        super().__init__(AgentType.QUALITY_AND_COORDINATOR, agent_id, **kwargs)
+        # 获取 LLM 客户端（支持 mock fallback）
         self._llm = get_llm_client()
+        # 加载质量评估标准
+        self._quality_standards = QUALITY_STANDARDS
 
     def get_system_prompt(self) -> str:
-        return """你是一位银行审计质量控制专家，具有10年以上审计质量检查经验。
+        """
+        获取智能体的系统提示词
+
+        定义智能体的角色为银行审计质量控制专家，明确职责和输出要求。
+
+        Returns:
+            str: 系统提示词文本
+        """
+        return """你是一位资深银行审计质量控制专家，具有10年以上审计质量管理经验。
 
 你的核心职责:
-1. 完整性检查：确保所有必填项都已填写，信息完整无遗漏
-2. 准确性检查：验证所有数据、引用、金额的准确性，交叉核对来源
-3. 一致性检查：确保风险评估前后一致，问题描述与证据匹配
-4. 规范性检查：确保报告格式规范，术语使用正确，符合审计标准
-5. 合理性检查：验证风险评级是否合理，整改建议是否可落地
+1. 审核各智能体输出结果的质量
+2. 评估审计工作的整体质量水平
+3. 协调多智能体之间的任务执行流程
+4. 识别质量问题并提出改进建议
 
-质量评级标准:
-- A级(优秀): 90分以上，完全符合质量要求，无需修改
-- B级(良好): 80-89分，基本符合要求，少量改进建议
-- C级(合格): 70-79分，存在一定问题，需要修改后通过
-- D级(不合格): 70分以下，存在严重问题，需重新审核
+质量评估标准:
+- 准确性：数据正确性、逻辑一致性、结论合理性
+- 完整性：覆盖范围、信息全面性、建议完整性
+- 规范性：格式规范、语言专业、结构清晰
+- 时效性：完成时间、提交及时性
 
-你的审核必须严谨、公正，确保最终输出的审计质量。
+输出要求:
+- 以结构化 JSON 格式输出，包含 quality_report 对象
+- quality_report 包含：overall_score, dimension_scores, quality_issues, improvement_suggestions
 """
 
     def get_tools(self) -> List[Any]:
+        """
+        获取智能体可用的工具列表
+
+        列出质量审核和任务协调相关的工具，实际项目中会接入真实的工具。
+
+        Returns:
+            List[Any]: 工具名称列表
+        """
         return [
-            "quality_checker",
-            "consistency_verifier",
-            "completeness_checker",
-            "data_validator",
-            "cross_reference_checker",
+            "quality_assessment_tool",  # 质量评估工具
+            "task_scheduler",           # 任务调度工具
+            "progress_tracker",         # 进度追踪工具
+            "dependency_manager",       # 依赖管理工具
+            "escalation_handler",       # 升级处理工具
         ]
 
     async def execute(self, task: Task) -> AgentResult:
-        """执行质量审核任务"""
-        logger.info(f"🔍 质量审核智能体开始审核任务: {task.task_id}")
+        """
+        执行质量审核或任务协调任务
 
-        content_to_audit = task.input_data.get("content", {})
-        source_agent = task.input_data.get("source_agent", "unknown")
-        audit_type = task.input_data.get("audit_type", "general")
+        核心执行流程:
+            1. 验证输入参数（任务类型、智能体结果）
+            2. 根据任务类型执行相应操作
+            3. 调用 _perform_quality_check 进行质量检查
+            4. 调用 _coordinate_tasks 进行任务协调
+            5. 返回包含审核/协调结果的 AgentResult
 
-        # 执行各项质量检查（LLM 驱动，mock 模式下回退到规则评分）
-        quality_scores, issues = await self._perform_quality_checks(content_to_audit, audit_type)
+        Args:
+            task: 任务对象，包含输入数据
 
-        # 计算总体质量得分
-        overall_score = self._calculate_overall_score(quality_scores)
+        Returns:
+            AgentResult: 执行结果
+        """
+        logger.info(f"质量审核和任务协调智能体开始处理任务: {task.task_id}")
 
-        # 确定质量等级
-        quality_grade = self._determine_grade(overall_score)
+        # 从任务输入数据中提取参数
+        task_type = task.input_data.get("task_type", "quality_check")
+        agent_results = task.input_data.get("agent_results", {})
+        task_context = task.input_data.get("task_context", {})
 
-        # 生成审核结论
-        audit_conclusion = self._generate_conclusion(overall_score, quality_grade, issues)
+        # 验证必填参数
+        if not agent_results and task_type == "quality_check":
+            return AgentResult(
+                agent_id=self.agent_id,
+                agent_type=self.agent_type.value,
+                success=False,
+                summary="缺少智能体结果参数",
+                error="agent_results is required for quality_check",
+                confidence_score=0.0,
+            )
 
-        # 记录审核历史
-        audit_record = {
-            "audit_id": task.task_id,
-            "source_agent": source_agent,
-            "audit_type": audit_type,
-            "quality_grade": quality_grade,
-            "overall_score": overall_score,
-            "audit_time": task.started_at.isoformat() if task.started_at else None,
-        }
-        self.audit_history.append(audit_record)
+        # 根据任务类型执行相应操作
+        if task_type == "quality_check":
+            # 执行质量检查
+            quality_report = await self._perform_quality_check(agent_results, task_context)
+            summary = self._generate_quality_summary(quality_report)
+            findings = quality_report
+        elif task_type == "coordination":
+            # 执行任务协调
+            coordination_result = await self._coordinate_tasks(agent_results, task_context)
+            summary = self._generate_coordination_summary(coordination_result)
+            findings = coordination_result
+        elif task_type == "progress_monitor":
+            # 执行进度监控
+            progress_result = await self._monitor_progress(agent_results, task_context)
+            summary = self._generate_progress_summary(progress_result)
+            findings = progress_result
+        else:
+            # 默认执行质量检查
+            quality_report = await self._perform_quality_check(agent_results, task_context)
+            summary = self._generate_quality_summary(quality_report)
+            findings = quality_report
 
-        # 生成建议
-        recommendations = []
-        for issue in issues:
-            suggestion = issue.suggestion if hasattr(issue, "suggestion") else issue.get("suggestion", "")
-            if suggestion:
-                recommendations.append(suggestion)
-
+        # 返回执行结果
         return AgentResult(
             agent_id=self.agent_id,
             agent_type=self.agent_type.value,
             success=True,
-            summary=audit_conclusion,
-            findings=[issue.to_dict() if hasattr(issue, "to_dict") else issue for issue in issues],
-            recommendations=recommendations,
-            confidence_score=0.98,
-            output_data={
-                "quality_grade": quality_grade,
-                "overall_score": overall_score,
-                "detailed_scores": quality_scores,
-                "issue_count": len(issues),
-                "pass_threshold": overall_score >= 70,
+            summary=summary,
+            findings=findings,
+            recommendations=self._generate_recommendations(findings),
+            confidence_score=self._calculate_confidence(findings),
+            metadata={
+                "task_type": task_type,
+                "agent_count": len(agent_results),
+                "overall_score": findings.get("overall_score", 0),
             },
         )
 
-    async def _perform_quality_checks(
-        self, content: Any, audit_type: str
-    ) -> Tuple[Dict[str, float], List[QualityIssue]]:
+    async def _perform_quality_check(
+        self, agent_results: Dict[str, Any], task_context: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
-        执行各项质量检查
-        - LLM 模式：发送内容给 LLM 进行质量评估
-        - Mock 模式：使用基于内容长度的规则评分
+        执行质量检查
+
+        工作机制:
+            1. 构造质量检查提示词
+            2. 调用 LLM 进行智能质量评估
+            3. 如果 LLM 不可用，使用 mock fallback 返回示例质量检查结果
+
+        Args:
+            agent_results: 各智能体的执行结果
+            task_context: 任务上下文
+
+        Returns:
+            Dict[str, Any]: 质量检查报告
         """
-        content_str = str(content)[:3000]
+        # 构造用户提示词
+        user_prompt = {
+            "agent_results": agent_results,
+            "task_context": task_context,
+            "quality_standards": self._quality_standards,
+            "check_requirements": "请根据质量标准，评估各智能体输出结果的质量。",
+        }
 
-        standard_names = {k: v["name"] for k, v in QualityStandard.STANDARDS.items()}
+        # 定义 mock fallback 函数，返回示例质量检查结果
+        def _mock_fallback():
+            return self._get_mock_quality_report(agent_results)
 
-        def _rule_based_fallback():
-            scores = {}
-            issues = []
-            content_length = len(content_str)
-
-            for standard_key, config in QualityStandard.STANDARDS.items():
-                base_score = min(95, 70 + content_length / 100)
-                import random
-                random.seed(hash(str(content)) + hash(standard_key))
-                score = base_score + random.uniform(-5, 5)
-                score = max(60, min(100, score))
-
-                has_issue = score < 85
-                scores[standard_key] = round(score, 1)
-
-                if has_issue:
-                    issue = QualityIssue(
-                        issue_id=f"QI-{standard_key}-{len(issues)}",
-                        level=self._score_to_level(score),
-                        category=config["name"],
-                        description=f"{config['name']}得分较低: {score:.1f}分",
-                        suggestion=self._get_suggestion(standard_key, score),
-                    )
-                    issues.append(issue)
-
-            return {"scores": scores, "issues": [i.to_dict() for i in issues]}
-
-        user_prompt = json.dumps({
-            "content": content_str,
-            "audit_type": audit_type,
-            "standards": standard_names,
-        }, ensure_ascii=False)
-
+        # 调用 LLM（带 fallback）
         result = await self._llm.call_with_fallback(
-            system_prompt=self.get_system_prompt() + "\n\n请以 JSON 格式返回结果，包含 'scores' 对象（key为标准key，value为分数0-100）和 'issues' 数组（每个元素含 issue_id, level, category, description, suggestion）。",
-            user_prompt=user_prompt,
-            fallback_fn=_rule_based_fallback,
+            system_prompt=self.get_system_prompt(),
+            user_prompt=str(user_prompt),
+            fallback_fn=_mock_fallback,
             response_format_json=True,
         )
 
-        if isinstance(result, dict) and "scores" in result:
-            scores = result["scores"]
-            raw_issues = result.get("issues", [])
-            issues = []
-            for raw in raw_issues:
-                issues.append(QualityIssue(
-                    issue_id=raw.get("issue_id", f"QI-{len(issues)}"),
-                    level=raw.get("level", QualityIssueLevel.MINOR),
-                    category=raw.get("category", "其他"),
-                    description=raw.get("description", ""),
-                    suggestion=raw.get("suggestion", ""),
-                ))
-            return scores, issues
+        # 处理 LLM 返回结果
+        if isinstance(result, dict) and "quality_report" in result:
+            return result["quality_report"]
+        elif isinstance(result, dict):
+            return result
         else:
-            return _rule_based_fallback()["scores"], []
+            logger.warning("LLM 返回格式异常，使用 mock 数据")
+            return self._get_mock_quality_report(agent_results)
 
-    def _score_to_level(self, score: float) -> str:
-        """将分数转换为问题等级"""
-        if score < 60:
-            return QualityIssueLevel.CRITICAL
-        elif score < 75:
-            return QualityIssueLevel.MAJOR
-        elif score < 85:
-            return QualityIssueLevel.MINOR
-        else:
-            return QualityIssueLevel.SUGGESTION
+    def _get_mock_quality_report(self, agent_results: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        返回示例质量检查报告（mock fallback）
 
-    def _get_suggestion(self, standard_key: str, score: float) -> str:
-        """获取改进建议"""
-        suggestions = {
-            "completeness": "建议补充相关信息，确保所有必要字段都已填写",
-            "accuracy": "建议核对相关数据的准确性，确保数值和引用无误",
-            "consistency": "建议检查表述的一致性，确保前后逻辑统一",
-            "clarity": "建议优化表述方式，使用更清晰准确的语言",
-            "compliance": "建议检查是否符合审计规范和监管要求",
-        }
-        return suggestions.get(standard_key, "建议进一步审核")
+        根据智能体结果数量返回示例质量评估数据，
+        用于开发测试和演示目的。
 
-    def _calculate_overall_score(self, quality_scores: Dict[str, float]) -> float:
-        """计算总体质量得分"""
-        total_score = 0.0
-        total_weight = 0.0
-        for standard_key, score in quality_scores.items():
-            weight = QualityStandard.STANDARDS[standard_key]["weight"]
-            total_score += score * weight
-            total_weight += weight
+        Args:
+            agent_results: 各智能体的执行结果
 
-        # 归一化到 0-100
-        if total_weight > 0:
-            total_score = total_score / total_weight
-        return round(total_score, 1)
-
-    def _determine_grade(self, score: float) -> str:
-        """确定质量等级"""
-        if score >= 90:
-            return "A"
-        elif score >= 80:
-            return "B"
-        elif score >= 70:
-            return "C"
-        else:
-            return "D"
-
-    def _generate_conclusion(self, score: float, grade: str, issues: List[Any]) -> str:
-        """生成审核结论"""
-        issue_count = len(issues)
-
-        grade_descriptions = {
-            "A": "质量优秀，完全符合审计标准，可以直接使用",
-            "B": "质量良好，基本符合要求，建议根据意见稍作修改后使用",
-            "C": "质量合格，但需要根据审核意见进行必要修改",
-            "D": "质量不合格，存在较严重问题，需要重新审核",
-        }
-
-        conclusion = (
-            f"质量审核完成，综合得分 {score:.1f} 分，等级 {grade}。"
-            f"{grade_descriptions.get(grade, '')}"
-        )
-
-        if issue_count > 0:
-            conclusion += f" 发现 {issue_count} 项待改进问题。"
-
-        return conclusion
-
-    def get_audit_statistics(self) -> Dict[str, Any]:
-        """获取审核统计信息"""
-        if not self.audit_history:
-            return {"total_audits": 0}
-
-        grade_counts: Dict[str, int] = defaultdict(int)
-        total_score = 0.0
-
-        for record in self.audit_history:
-            grade = record["quality_grade"]
-            grade_counts[grade] += 1
-            total_score += record["overall_score"]
-
-        avg_score = total_score / len(self.audit_history)
+        Returns:
+            Dict[str, Any]: 示例质量检查报告
+        """
+        agent_count = len(agent_results)
 
         return {
-            "total_audits": len(self.audit_history),
-            "grade_distribution": dict(grade_counts),
-            "average_score": round(avg_score, 1),
-            "pass_rate": round(
-                sum(1 for r in self.audit_history if r["quality_grade"] in ["A", "B", "C"])
-                / len(self.audit_history) * 100,
-                1,
-            ),
-        }
-
-
-class TaskCoordinatorAgent(BaseAgent):
-    """
-    任务协调智能体
-
-    核心能力:
-    1. 任务分解和分配
-    2. 工作流编排和调度
-    3. 智能体间协作协调
-    4. 任务依赖管理
-    5. 进度监控和异常处理
-    """
-
-    def __init__(self, agent_id: Optional[str] = None, **kwargs):
-        super().__init__(AgentType.TASK_COORDINATOR, agent_id, **kwargs)
-        self.task_queue: List[Task] = []
-
-    def get_system_prompt(self) -> str:
-        return """你是银行审计项目总协调人，负责整个审计工作流的规划和调度。
-
-你的核心职责:
-1. 任务分解：将复杂的审计项目分解为可执行的子任务
-2. 智能体分配：根据各智能体的专长和当前负载分配任务
-3. 依赖管理：管理任务间的依赖关系，确保正确的执行顺序
-4. 进度监控：实时监控任务执行进度，发现异常及时处理
-5. 结果汇总：汇总各智能体的输出，形成完整的审计结果
-6. 资源调度：优化智能体资源分配，提高整体效率
-
-协调原则:
-- 高效：最大化并行执行，缩短总体时间
-- 有序：严格按照依赖关系调度
-- 容错：单个任务失败不影响整体流程，有重试机制
-- 透明：所有任务状态清晰可查
-- 公平：确保高优先级任务优先执行
-"""
-
-    def get_tools(self) -> List[Any]:
-        return [
-            "task_planner",
-            "workflow_orchestrator",
-            "progress_tracker",
-            "dependency_manager",
-            "resource_scheduler",
-        ]
-
-    async def execute(self, task: Task) -> AgentResult:
-        """执行项目协调任务"""
-        logger.info(f"🎯 任务协调智能体开始处理项目: {task.task_id}")
-
-        project_requirements = task.input_data.get("project_requirements", {})
-        workflow_type = project_requirements.get("workflow_type", "credit_audit")
-        priority = project_requirements.get("priority", "normal")
-
-        # 1. 任务分解
-        subtasks = self._decompose_project(workflow_type, project_requirements)
-
-        # 2. 建立任务依赖
-        dependency_graph = self._setup_dependencies(subtasks, workflow_type)
-
-        # 3. 分配任务到智能体
-        assignments = self._assign_tasks_to_agents(subtasks)
-
-        # 4. 生成执行计划
-        execution_plan = self._generate_execution_plan(subtasks, assignments)
-
-        # 5. 估算执行时间
-        estimated_duration = self._estimate_duration(subtasks)
-
-        result_summary = (
-            f"审计项目已拆解为 {len(subtasks)} 个子任务，"
-            f"分配给 {len(set(assignments.values()))} 种类型的智能体执行。"
-            f"预计执行时间约 {estimated_duration} 分钟。"
-        )
-
-        return AgentResult(
-            agent_id=self.agent_id,
-            agent_type=self.agent_type.value,
-            success=True,
-            summary=result_summary,
-            findings=execution_plan,
-            recommendations=[
-                "建议实时监控任务执行状态",
-                "对高风险任务设置超时预警",
-                "准备好备选执行方案应对异常",
-            ],
-            confidence_score=0.95,
-            output_data={
-                "workflow_type": workflow_type,
-                "priority": priority,
-                "total_tasks": len(subtasks),
-                "assignments": assignments,
-                "dependency_graph": dependency_graph,
-                "estimated_duration_minutes": estimated_duration,
-                "execution_plan": execution_plan,
+            "overall_score": 85.5,
+            "dimension_scores": {
+                "accuracy": {
+                    "score": 88,
+                    "weight": 0.35,
+                    "assessment": "数据提取准确，结论有依据",
+                },
+                "completeness": {
+                    "score": 82,
+                    "weight": 0.25,
+                    "assessment": "覆盖主要检查点，但部分细节可补充",
+                },
+                "standardization": {
+                    "score": 87,
+                    "weight": 0.20,
+                    "assessment": "格式规范，语言专业",
+                },
+                "timeliness": {
+                    "score": 85,
+                    "weight": 0.20,
+                    "assessment": "基本按时完成",
+                },
             },
+            "quality_issues": [
+                {
+                    "issue": "部分风险评估置信度偏低",
+                    "severity": "low",
+                    "agent": "risk_identifier",
+                    "suggestion": "建议增加数据验证环节",
+                },
+                {
+                    "issue": "文档解析缺少部分字段",
+                    "severity": "middle",
+                    "agent": "document_parser",
+                    "suggestion": "建议完善字段提取规则",
+                },
+            ],
+            "improvement_suggestions": [
+                "建议建立数据交叉验证机制",
+                "建议优化字段提取规则",
+                "建议加强结果审核环节",
+            ],
+            "agent_count": agent_count,
+            "pass_rate": 100 if agent_count > 0 else 0,
+        }
+
+    async def _coordinate_tasks(
+        self, agent_results: Dict[str, Any], task_context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        执行任务协调
+
+        工作机制:
+            1. 分析任务依赖关系
+            2. 确定任务执行顺序
+            3. 调用 LLM 进行智能任务协调
+            4. 如果 LLM 不可用，使用 mock fallback 返回示例协调结果
+
+        Args:
+            agent_results: 各智能体的执行结果
+            task_context: 任务上下文
+
+        Returns:
+            Dict[str, Any]: 任务协调结果
+        """
+        # 构造用户提示词
+        user_prompt = {
+            "agent_results": agent_results,
+            "task_context": task_context,
+            "coordination_requirements": "请分析任务依赖关系，确定最优执行顺序。",
+        }
+
+        # 定义 mock fallback 函数，返回示例协调结果
+        def _mock_fallback():
+            return self._get_mock_coordination_result()
+
+        # 调用 LLM（带 fallback）
+        result = await self._llm.call_with_fallback(
+            system_prompt=self.get_system_prompt(),
+            user_prompt=str(user_prompt),
+            fallback_fn=_mock_fallback,
+            response_format_json=True,
         )
 
-    def _decompose_project(
-        self, workflow_type: str, requirements: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
-        """将审计项目分解为子任务"""
-        task_definitions = self._get_workflow_tasks(workflow_type)
+        # 处理 LLM 返回结果
+        if isinstance(result, dict):
+            return result
+        else:
+            logger.warning("LLM 返回格式异常，使用 mock 数据")
+            return self._get_mock_coordination_result()
 
-        subtasks = []
-        for i, (task_type, name, desc) in enumerate(task_definitions):
-            subtask = {
-                "task_id": f"TASK-{i:03d}",
-                "task_type": task_type,
-                "name": name,
-                "description": desc,
-                "priority": self._get_task_priority(task_type),
-            }
-            subtasks.append(subtask)
+    def _get_mock_coordination_result(self) -> Dict[str, Any]:
+        """
+        返回示例任务协调结果（mock fallback）
 
-        return subtasks
+        返回示例任务协调数据，用于开发测试和演示目的。
 
-    def _get_workflow_tasks(self, workflow_type: str) -> List[Tuple[str, str, str]]:
-        """获取工作流的任务定义"""
-        workflows = {
-            "credit_audit": [
-                ("document_parsing", "文档解析", "解析贷款合同、财务报表等信贷资料"),
-                ("risk_identification", "风险识别", "识别信贷业务中的各类风险点"),
-                ("compliance_check", "合规检查", "对照监管政策进行合规性核查"),
-                ("report_generation", "报告生成", "整合结果，生成审计报告"),
-                ("quality_audit", "质量审核", "对审计报告进行质量审核"),
+        Returns:
+            Dict[str, Any]: 示例任务协调结果
+        """
+        return {
+            "task_sequence": [
+                {"agent": "document_parser", "step": 1, "status": "completed"},
+                {"agent": "compliance_checker", "step": 2, "status": "completed"},
+                {"agent": "risk_identifier", "step": 3, "status": "completed"},
+                {"agent": "quality_and_coordinator", "step": 4, "status": "completed"},
+                {"agent": "report_writer", "step": 5, "status": "pending"},
             ],
-            "compliance_audit": [
-                ("document_parsing", "监管政策解析", "解析最新的监管政策文件"),
-                ("business_parsing", "业务资料解析", "解析被审计业务的相关资料"),
-                ("aml_check", "反洗钱检查", "检查反洗钱合规情况"),
-                ("general_compliance", "一般合规检查", "全面合规性检查"),
-                ("report_generation", "合规报告生成", "生成合规专项审计报告"),
-            ],
-            "financial_audit": [
-                ("data_parsing", "财务数据解析", "解析财务报表和账户流水"),
-                ("anomaly_detection", "异常检测", "识别财务异常交易和指标"),
-                ("compliance_check", "财务合规检查", "检查财务制度执行情况"),
-                ("report_generation", "财务审计报告", "生成财务审计报告"),
-            ],
+            "dependencies": {
+                "compliance_checker": ["document_parser"],
+                "risk_identifier": ["document_parser"],
+                "quality_and_coordinator": ["compliance_checker", "risk_identifier"],
+                "report_writer": ["quality_and_coordinator"],
+            },
+            "next_step": "report_writer",
+            "estimated_completion_time": "10分钟",
+            "overall_progress": 80,
         }
 
-        return workflows.get(workflow_type, workflows["credit_audit"])
+    async def _monitor_progress(
+        self, agent_results: Dict[str, Any], task_context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        监控任务进度
 
-    def _get_task_priority(self, task_type: str) -> int:
-        """获取任务的优先级"""
-        priorities = {
-            "document_parsing": 10,
-            "data_parsing": 10,
-            "business_parsing": 10,
-            "risk_identification": 8,
-            "anomaly_detection": 8,
-            "compliance_check": 7,
-            "aml_check": 9,
-            "general_compliance": 7,
-            "report_generation": 5,
-            "quality_audit": 6,
-        }
-        return priorities.get(task_type, 5)
+        工作机制:
+            1. 收集各智能体的执行状态
+            2. 计算整体进度
+            3. 识别瓶颈和延迟
+            4. 调用 LLM 进行智能进度分析
 
-    def _setup_dependencies(
-        self, subtasks: List[Dict[str, Any]], workflow_type: str
-    ) -> Dict[str, List[str]]:
-        """设置任务依赖关系"""
-        dependency_graph = {}
+        Args:
+            agent_results: 各智能体的执行结果
+            task_context: 任务上下文
 
-        # 默认按顺序依赖
-        for i in range(1, len(subtasks)):
-            current_task_id = subtasks[i]["task_id"]
-            prev_task_id = subtasks[i - 1]["task_id"]
-            dependency_graph[current_task_id] = [prev_task_id]
-
-        return dependency_graph
-
-    def _assign_tasks_to_agents(self, subtasks: List[Dict[str, Any]]) -> Dict[str, str]:
-        """将任务分配给合适的智能体类型"""
-        task_agent_mapping = {
-            "document_parsing": AgentType.DOCUMENT_PARSER.value,
-            "data_parsing": AgentType.DOCUMENT_PARSER.value,
-            "business_parsing": AgentType.DOCUMENT_PARSER.value,
-            "risk_identification": AgentType.RISK_IDENTIFIER.value,
-            "anomaly_detection": AgentType.RISK_IDENTIFIER.value,
-            "compliance_check": AgentType.COMPLIANCE_CHECKER.value,
-            "aml_check": AgentType.COMPLIANCE_CHECKER.value,
-            "general_compliance": AgentType.COMPLIANCE_CHECKER.value,
-            "report_generation": AgentType.REPORT_WRITER.value,
-            "quality_audit": AgentType.QUALITY_AUDITOR.value,
+        Returns:
+            Dict[str, Any]: 进度监控结果
+        """
+        # 构造用户提示词
+        user_prompt = {
+            "agent_results": agent_results,
+            "task_context": task_context,
+            "monitor_requirements": "请监控任务执行进度，识别瓶颈和延迟。",
         }
 
-        assignments = {}
-        for subtask in subtasks:
-            task_type = subtask["task_type"]
-            agent_type = task_agent_mapping.get(task_type, AgentType.RISK_IDENTIFIER.value)
-            assignments[subtask["task_id"]] = agent_type
+        # 定义 mock fallback 函数，返回示例进度监控结果
+        def _mock_fallback():
+            return self._get_mock_progress_result(agent_results)
 
-        return assignments
+        # 调用 LLM（带 fallback）
+        result = await self._llm.call_with_fallback(
+            system_prompt=self.get_system_prompt(),
+            user_prompt=str(user_prompt),
+            fallback_fn=_mock_fallback,
+            response_format_json=True,
+        )
 
-    def _generate_execution_plan(
-        self, subtasks: List[Dict[str, Any]], assignments: Dict[str, str]
-    ) -> List[Dict[str, Any]]:
-        """生成执行计划"""
-        execution_plan = []
+        # 处理 LLM 返回结果
+        if isinstance(result, dict):
+            return result
+        else:
+            logger.warning("LLM 返回格式异常，使用 mock 数据")
+            return self._get_mock_progress_result(agent_results)
 
-        for i, subtask in enumerate(subtasks, 1):
-            execution_plan.append({
-                "sequence": i,
-                "task_id": subtask["task_id"],
-                "task_type": subtask["task_type"],
-                "name": subtask["name"],
-                "description": subtask["description"],
-                "assigned_agent_type": assignments.get(subtask["task_id"], "unknown"),
-                "priority": subtask["priority"],
-            })
+    def _get_mock_progress_result(self, agent_results: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        返回示例进度监控结果（mock fallback）
 
-        return execution_plan
+        根据智能体结果数量返回示例进度数据，用于开发测试和演示目的。
 
-    def _estimate_duration(self, subtasks: List[Dict[str, Any]]) -> int:
-        """估算执行时间（分钟）"""
-        # 假设每个任务平均 0.5 分钟，加上并行执行的优化
-        base_time = len(subtasks) * 0.5
-        # 考虑并行因素，乘以 0.7
-        return max(1, int(base_time * 0.7))
+        Args:
+            agent_results: 各智能体的执行结果
+
+        Returns:
+            Dict[str, Any]: 示例进度监控结果
+        """
+        agent_count = len(agent_results)
+
+        return {
+            "overall_progress": 80,
+            "agent_status": {
+                "document_parser": {"status": "completed", "progress": 100},
+                "compliance_checker": {"status": "completed", "progress": 100},
+                "risk_identifier": {"status": "completed", "progress": 100},
+                "quality_and_coordinator": {"status": "completed", "progress": 100},
+                "report_writer": {"status": "pending", "progress": 0},
+            },
+            "completed_tasks": agent_count,
+            "total_tasks": 5,
+            "estimated_remaining_time": "10分钟",
+            "bottlenecks": [],
+            "delays": [],
+        }
+
+    def _generate_quality_summary(self, quality_report: Dict[str, Any]) -> str:
+        """
+        生成质量检查摘要
+
+        根据质量检查报告生成简洁的摘要文本。
+
+        Args:
+            quality_report: 质量检查报告
+
+        Returns:
+            str: 质量检查摘要
+        """
+        overall_score = quality_report.get("overall_score", 0)
+        issue_count = len(quality_report.get("quality_issues", []))
+
+        if issue_count == 0:
+            return f"质量检查通过，整体评分：{overall_score}分"
+
+        return f"质量检查完成，整体评分：{overall_score}分，发现{issue_count}项质量问题"
+
+    def _generate_coordination_summary(self, coordination_result: Dict[str, Any]) -> str:
+        """
+        生成任务协调摘要
+
+        根据任务协调结果生成简洁的摘要文本。
+
+        Args:
+            coordination_result: 任务协调结果
+
+        Returns:
+            str: 任务协调摘要
+        """
+        next_step = coordination_result.get("next_step", "未知")
+        progress = coordination_result.get("overall_progress", 0)
+
+        return f"任务协调完成，当前进度：{progress}%，下一步：{next_step}"
+
+    def _generate_progress_summary(self, progress_result: Dict[str, Any]) -> str:
+        """
+        生成进度监控摘要
+
+        根据进度监控结果生成简洁的摘要文本。
+
+        Args:
+            progress_result: 进度监控结果
+
+        Returns:
+            str: 进度监控摘要
+        """
+        overall_progress = progress_result.get("overall_progress", 0)
+        completed = progress_result.get("completed_tasks", 0)
+        total = progress_result.get("total_tasks", 0)
+
+        return f"进度监控完成，已完成{completed}/{total}个任务，整体进度：{overall_progress}%"
+
+    def _generate_recommendations(self, findings: Dict[str, Any]) -> List[str]:
+        """
+        生成改进建议
+
+        从质量检查或协调结果中提取建议。
+
+        Args:
+            findings: 检查或协调结果
+
+        Returns:
+            List[str]: 改进建议列表
+        """
+        recommendations = []
+
+        # 提取质量检查报告中的改进建议
+        if "improvement_suggestions" in findings:
+            recommendations.extend(findings["improvement_suggestions"])
+
+        # 提取质量问题中的建议
+        if "quality_issues" in findings:
+            for issue in findings["quality_issues"]:
+                suggestion = issue.get("suggestion")
+                if suggestion and suggestion not in recommendations:
+                    recommendations.append(suggestion)
+
+        # 添加通用建议
+        if not recommendations:
+            recommendations.append("建议定期进行质量检查")
+            recommendations.append("建议优化任务协调流程")
+
+        return recommendations
+
+    def _calculate_confidence(self, findings: Dict[str, Any]) -> float:
+        """
+        计算置信度分数
+
+        根据质量评分计算置信度。
+
+        Args:
+            findings: 检查或协调结果
+
+        Returns:
+            float: 置信度分数（0-1）
+        """
+        overall_score = findings.get("overall_score", 85)
+
+        return min(0.95, max(0.70, overall_score / 100))

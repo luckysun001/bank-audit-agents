@@ -1,8 +1,26 @@
 """
-风险识别智能体
-深度分析文档内容，识别各类审计风险点
+风险识别智能体模块
+
+负责识别和评估银行审计过程中的各类风险。
+
+核心能力:
+    1. 信用风险识别（借款人信用状况评估）
+    2. 市场风险识别（利率、汇率波动风险）
+    3. 操作风险识别（流程缺陷、内部控制不足）
+    4. 流动性风险识别（资金流动性管理）
+    5. 风险等级评估和风险敞口计算
+
+风险评估维度:
+    - 风险发生概率（高/中/低）
+    - 风险影响程度（严重/中等/轻微）
+    - 风险敞口金额
+    - 风险缓释措施评估
+
+工作模式:
+    - LLM 模式：使用 LLM 进行智能风险分析
+    - Mock 模式：未配置 API Key 时，返回示例风险识别结果
 """
-import json
+
 from typing import Any, Dict, List, Optional
 
 from bank_audit_agents.core.base_agent import (
@@ -14,324 +32,480 @@ from bank_audit_agents.core.base_agent import (
 from bank_audit_agents.utils.logger import get_logger
 from bank_audit_agents.utils.llm_client import get_llm_client
 
+# 获取模块级日志记录器
 logger = get_logger(__name__)
 
 
-class RiskLevel(str):
-    """风险等级"""
-    CRITICAL = "critical"
-    HIGH = "high"
-    MEDIUM = "medium"
-    LOW = "low"
-    INFO = "info"
+# 风险类型定义（模拟）
+RISK_TYPES = {
+    # 信用风险
+    "credit_risk": {
+        "name": "信用风险",
+        "description": "借款人无法按时偿还本息的风险",
+        "key_indicators": ["还款能力", "信用记录", "资产负债率", "现金流状况"],
+    },
+    # 市场风险
+    "market_risk": {
+        "name": "市场风险",
+        "description": "因市场价格波动导致资产损失的风险",
+        "key_indicators": ["利率敏感性", "汇率波动", "资产价格变动"],
+    },
+    # 操作风险
+    "operational_risk": {
+        "name": "操作风险",
+        "description": "因内部控制缺陷或人为失误导致的风险",
+        "key_indicators": ["流程完整性", "权限管理", "审计追踪"],
+    },
+    # 流动性风险
+    "liquidity_risk": {
+        "name": "流动性风险",
+        "description": "银行无法及时满足资金需求的风险",
+        "key_indicators": ["资金缺口", "存款稳定性", "融资渠道"],
+    },
+    # 合规风险
+    "compliance_risk": {
+        "name": "合规风险",
+        "description": "违反监管规定导致处罚的风险",
+        "key_indicators": ["法规遵循度", "政策执行情况", "违规历史"],
+    },
+}
 
 
 class RiskIdentifierAgent(BaseAgent):
     """
     风险识别智能体
 
-    核心能力:
-    1. 信贷风险识别（信用风险、集中度风险、担保风险等）
-    2. 合规风险识别（监管政策违规、内部制度违规等）
-    3. 财务风险识别（财务造假、异常交易、偿债能力等）
-    4. 操作风险识别（流程缺陷、内部控制漏洞等）
-    5. 风险评级和优先级排序
+    继承自 BaseAgent，实现风险识别的核心业务逻辑。
+
+    核心职责:
+        1. 根据业务数据识别潜在风险
+        2. 评估风险等级和影响程度
+        3. 计算风险敞口金额
+        4. 提出风险缓释建议
+
+    输入数据要求:
+        - business_type: 业务类型（如 loan, investment, deposit）
+        - business_data: 业务数据（包含具体业务信息）
+        - risk_scope: 风险评估范围（可选，默认 all）
     """
 
-    # 风险模式库（实际项目中会扩展为完整的风险规则库）
-    RISK_PATTERNS = {
-        "credit_risk": [
-            {"pattern": "逾期", "level": RiskLevel.HIGH, "category": "信贷风险"},
-            {"pattern": "欠息", "level": RiskLevel.HIGH, "category": "信贷风险"},
-            {"pattern": "不良", "level": RiskLevel.MEDIUM, "category": "信贷风险"},
-            {"pattern": "重组贷款", "level": RiskLevel.HIGH, "category": "信贷风险"},
-            {"pattern": "借新还旧", "level": RiskLevel.HIGH, "category": "信贷风险"},
-        ],
-        "compliance_risk": [
-            {"pattern": "违反.*规定", "level": RiskLevel.MEDIUM, "category": "合规风险"},
-            {"pattern": "未按.*执行", "level": RiskLevel.MEDIUM, "category": "合规风险"},
-            {"pattern": "越权审批", "level": RiskLevel.HIGH, "category": "合规风险"},
-            {"pattern": "流程不符", "level": RiskLevel.LOW, "category": "合规风险"},
-        ],
-        "financial_risk": [
-            {"pattern": "亏损", "level": RiskLevel.HIGH, "category": "财务风险"},
-            {"pattern": "资不抵债", "level": RiskLevel.CRITICAL, "category": "财务风险"},
-            {"pattern": "现金流紧张", "level": RiskLevel.HIGH, "category": "财务风险"},
-            {"pattern": "负债率过高", "level": RiskLevel.MEDIUM, "category": "财务风险"},
-        ],
-        "guarantee_risk": [
-            {"pattern": "担保不足", "level": RiskLevel.HIGH, "category": "担保风险"},
-            {"pattern": "抵押物不足值", "level": RiskLevel.HIGH, "category": "担保风险"},
-            {"pattern": "互保圈", "level": RiskLevel.CRITICAL, "category": "担保风险"},
-        ],
-    }
-
     def __init__(self, agent_id: Optional[str] = None, **kwargs):
+        """
+        初始化风险识别智能体
+
+        Args:
+            agent_id: 智能体 ID（可选，不提供则自动生成）
+            **kwargs: 其他传递给父类的参数
+        """
         super().__init__(AgentType.RISK_IDENTIFIER, agent_id, **kwargs)
-        self.risk_database: Dict[str, Any] = {}  # 风险知识库
+        # 获取 LLM 客户端（支持 mock fallback）
         self._llm = get_llm_client()
+        # 加载风险类型定义
+        self._risk_types = RISK_TYPES
 
     def get_system_prompt(self) -> str:
-        return """你是一位资深银行风险识别专家，具有20年银行风险管理经验。
+        """
+        获取智能体的系统提示词
+
+        定义智能体的角色为银行风险专家，明确职责和输出要求。
+
+        Returns:
+            str: 系统提示词文本
+        """
+        return """你是一位资深银行风险专家，具有12年以上银行风险管理经验。
 
 你的核心职责:
-1. 从审计文档中精准识别各类风险点，包括但不限于：
-   - 信贷风险：信用风险、集中度风险、担保风险、期限错配风险
-   - 合规风险：监管政策违规、内部制度违反、反洗钱风险
-   - 财务风险：财务造假、偿债能力恶化、异常交易
-   - 操作风险：流程缺陷、内部控制漏洞、系统风险
-   - 集中度风险：行业集中、客户集中、区域集中
+1. 识别业务中存在的各类风险（信用风险、市场风险、操作风险、流动性风险等）
+2. 评估风险发生概率（高/中/低）和影响程度（严重/中等/轻微）
+3. 计算风险敞口金额
+4. 提出具体的风险缓释措施和管理建议
 
-2. 风险评级标准:
-   - 严重(CRITICAL): 可能造成重大损失，需立即整改
-   - 高(HIGH): 可能造成较大损失，需重点关注
-   - 中(MEDIUM): 存在风险隐患，需限期整改
-   - 低(LOW): 轻微问题，建议改进
+风险评估标准:
+- 信用风险：评估借款人信用状况、还款能力、担保措施
+- 市场风险：评估利率、汇率、资产价格变动影响
+- 操作风险：评估流程缺陷、内部控制、人为因素
+- 流动性风险：评估资金流动性、融资能力
 
-3. 输出要求:
-   - 每个风险点需明确：风险描述、风险等级、风险类别、影响程度
-   - 标注风险在文档中的具体位置
-   - 提供风险发生可能性评估
-   - 给出初步的风险缓释建议
+输出要求:
+- 以结构化 JSON 格式输出，包含 risks 数组
+- 每个风险项包含：risk_type, risk_name, risk_description, probability(high/middle/low), impact(severe/medium/mild), exposure_amount, recommendation
 """
 
     def get_tools(self) -> List[Any]:
+        """
+        获取智能体可用的工具列表
+
+        列出风险识别相关的工具，实际项目中会接入真实的风险评估工具。
+
+        Returns:
+            List[Any]: 工具名称列表
+        """
         return [
-            "risk_pattern_matcher",
-            "anomaly_detector",
-            "trend_analyzer",
-            "risk_classifier",
-            "impact_assessor",
-            "knowledge_base_retriever",
+            "credit_scoring",         # 信用评分工具
+            "market_risk_model",      # 市场风险模型
+            "operational_risk_model", # 操作风险模型
+            "liquidity_analysis",     # 流动性分析工具
+            "risk_database",          # 风险数据库查询
         ]
 
     async def execute(self, task: Task) -> AgentResult:
+        """
+        执行风险识别任务
+
+        核心执行流程:
+            1. 验证输入参数（业务类型、业务数据）
+            2. 根据业务类型确定风险评估维度
+            3. 调用 _identify_risks 识别风险
+            4. 调用 _calculate_overall_risk 计算整体风险评分
+            5. 调用 _generate_recommendations 生成风险缓释建议
+            6. 返回包含风险识别结果的 AgentResult
+
+        Args:
+            task: 任务对象，包含输入数据
+
+        Returns:
+            AgentResult: 执行结果
+        """
         logger.info(f"风险识别智能体开始处理任务: {task.task_id}")
 
-        document_content = task.input_data.get("document_content", "")
-        document_type = task.input_data.get("document_type", "general")
-        risk_focus = task.input_data.get("risk_focus", [])  # 指定关注的风险类型
+        # 从任务输入数据中提取参数
+        business_type = task.input_data.get("business_type")
+        business_data = task.input_data.get("business_data", {})
+        risk_scope = task.input_data.get("risk_scope", "all")
 
-        if not document_content:
+        # 验证必填参数
+        if not business_type:
             return AgentResult(
                 agent_id=self.agent_id,
                 agent_type=self.agent_type.value,
                 success=False,
-                summary="缺少文档内容",
-                error="document_content is required",
+                summary="缺少业务类型参数",
+                error="business_type is required",
                 confidence_score=0.0,
             )
 
+        # 根据业务类型确定风险评估维度
+        risk_dimensions = self._determine_risk_dimensions(business_type, risk_scope)
+
         # 执行风险识别（LLM 驱动，mock 模式下回退到示例数据）
-        identified_risks = await self._identify_risks(
-            document_content, document_type, risk_focus
+        risks = await self._identify_risks(
+            business_type, business_data, risk_dimensions
         )
 
-        # 风险评级
-        rated_risks = self._rate_risks(identified_risks)
+        # 计算整体风险评分
+        overall_risk_score = self._calculate_overall_risk(risks)
 
-        # 统计分析
-        risk_summary = self._generate_risk_summary(rated_risks)
+        # 评估整体风险等级
+        overall_risk_level = self._assess_overall_risk_level(overall_risk_score)
 
-        # 生成建议
-        recommendations = self._generate_recommendations(rated_risks)
+        # 生成风险缓释建议
+        recommendations = self._generate_recommendations(risks)
 
+        # 生成摘要
+        summary = self._generate_summary(business_type, risks, overall_risk_level)
+
+        # 返回执行结果
         return AgentResult(
             agent_id=self.agent_id,
             agent_type=self.agent_type.value,
             success=True,
-            summary=risk_summary,
-            findings=rated_risks,
+            summary=summary,
+            findings=risks,
             recommendations=recommendations,
-            confidence_score=self._calculate_confidence(rated_risks),
+            confidence_score=self._calculate_confidence(risks),
             metadata={
-                "total_risks": len(rated_risks),
-                "critical_count": sum(1 for r in rated_risks if r["level"] == RiskLevel.CRITICAL),
-                "high_count": sum(1 for r in rated_risks if r["level"] == RiskLevel.HIGH),
-                "medium_count": sum(1 for r in rated_risks if r["level"] == RiskLevel.MEDIUM),
-                "low_count": sum(1 for r in rated_risks if r["level"] == RiskLevel.LOW),
-                "document_type": document_type,
+                "business_type": business_type,
+                "risk_scope": risk_scope,
+                "risk_count": len(risks),
+                "overall_risk_score": overall_risk_score,
+                "overall_risk_level": overall_risk_level,
+                "total_exposure": sum(r.get("exposure_amount", 0) for r in risks),
             },
         )
 
+    def _determine_risk_dimensions(self, business_type: str, scope: str) -> List[str]:
+        """
+        根据业务类型确定风险评估维度
+
+        根据业务类型和风险评估范围，确定需要评估的风险类型。
+
+        Args:
+            business_type: 业务类型
+            scope: 风险评估范围（all/credit/market/operational/liquidity）
+
+        Returns:
+            List[str]: 风险评估维度列表
+        """
+        if scope != "all":
+            return [scope]
+
+        # 根据业务类型自动确定风险维度
+        dimension_map = {
+            "loan": ["credit_risk", "operational_risk"],
+            "investment": ["market_risk", "credit_risk"],
+            "deposit": ["liquidity_risk", "operational_risk"],
+            "foreign_exchange": ["market_risk", "liquidity_risk"],
+        }
+
+        return dimension_map.get(business_type, list(self._risk_types.keys()))
+
     async def _identify_risks(
-        self, content: str, document_type: str, risk_focus: List[str]
+        self, business_type: str, business_data: Dict[str, Any], dimensions: List[str]
     ) -> List[Dict[str, Any]]:
         """
-        识别风险点
-        - LLM 模式：将文档内容发送给 LLM 进行风险分析
-        - Mock 模式：返回示例风险数据
+        识别风险
+
+        工作机制:
+            1. 构造风险识别提示词
+            2. 调用 LLM 进行智能风险分析
+            3. 如果 LLM 不可用，使用 mock fallback 返回示例风险识别结果
+
+        Args:
+            business_type: 业务类型
+            business_data: 业务数据
+            dimensions: 风险评估维度
+
+        Returns:
+            List[Dict[str, Any]]: 风险识别结果列表
         """
-        user_prompt = json.dumps({
-            "document_content": content[:4000],
-            "document_type": document_type,
-            "risk_focus": risk_focus,
-        }, ensure_ascii=False)
+        # 获取风险类型详细信息
+        risk_info = {dim: self._risk_types[dim] for dim in dimensions if dim in self._risk_types}
 
+        # 构造用户提示词
+        user_prompt = {
+            "business_type": business_type,
+            "business_data": business_data,
+            "risk_dimensions": dimensions,
+            "risk_type_info": risk_info,
+            "analysis_requirements": "请根据业务数据，识别各风险维度下的具体风险，并评估风险等级。",
+        }
+
+        # 定义 mock fallback 函数，返回示例风险识别结果
         def _mock_fallback():
-            return self._get_mock_risks(risk_focus)
+            return self._get_mock_risks(business_type, dimensions)
 
+        # 调用 LLM（带 fallback）
         result = await self._llm.call_with_fallback(
-            system_prompt=self.get_system_prompt() + "\n\n请以 JSON 格式返回结果，包含一个 'risks' 数组，每个元素包含字段：risk_id, description, category, level(critical/high/medium/low), location, evidence, likelihood(0-1)。",
-            user_prompt=user_prompt,
+            system_prompt=self.get_system_prompt(),
+            user_prompt=str(user_prompt),
             fallback_fn=_mock_fallback,
             response_format_json=True,
         )
 
+        # 处理 LLM 返回结果
         if isinstance(result, dict) and "risks" in result:
-            risks = result["risks"]
+            return result["risks"]
         elif isinstance(result, list):
-            risks = result
+            return result
         else:
             logger.warning("LLM 返回格式异常，使用 mock 数据")
-            risks = self._get_mock_risks(risk_focus)
+            return self._get_mock_risks(business_type, dimensions)
 
-        # 确保每个风险都有 level 字段
-        for risk in risks:
-            if "level" not in risk:
-                risk["level"] = RiskLevel.MEDIUM
-            elif isinstance(risk["level"], str) and risk["level"].upper() not in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"):
-                risk["level"] = RiskLevel.MEDIUM
+    def _get_mock_risks(self, business_type: str, dimensions: List[str]) -> List[Dict[str, Any]]:
+        """
+        返回示例风险识别结果（mock fallback）
 
-        return risks
+        根据业务类型和风险维度返回不同的示例风险数据，
+        用于开发测试和演示目的。
 
-    def _get_mock_risks(self, risk_focus: List[str]) -> List[Dict[str, Any]]:
-        """返回示例风险数据（mock fallback）"""
-        mock_risks = [
-            {
-                "risk_id": "RISK_001",
-                "description": "发现借新还旧迹象，贷款可能存在隐性不良风险",
-                "category": "信贷风险",
-                "level": RiskLevel.HIGH,
-                "location": "第5页贷款用途描述",
-                "evidence": "贷款用途为'流动资金周转'，但原贷款即将到期",
-                "likelihood": 0.85,
-            },
-            {
-                "risk_id": "RISK_002",
-                "description": "抵押物评估价值偏高，抵押率实际超过监管要求",
-                "category": "担保风险",
-                "level": RiskLevel.MEDIUM,
-                "location": "第8页抵押物评估报告",
-                "evidence": "评估价较市场均价高15%，实际抵押率约83%",
-                "likelihood": 0.70,
-            },
-            {
-                "risk_id": "RISK_003",
-                "description": "借款人资产负债率超过70%，偿债压力较大",
-                "category": "财务风险",
-                "level": RiskLevel.MEDIUM,
-                "location": "第3页财务报表摘要",
-                "evidence": "资产负债率72.3%，较上年上升5.6个百分点",
-                "likelihood": 0.95,
-            },
-            {
-                "risk_id": "RISK_004",
-                "description": "贷款审批流程缺少关键审批人签字",
-                "category": "合规风险",
-                "level": RiskLevel.HIGH,
-                "location": "第10页审批表",
-                "evidence": "分行风险总监审批位置空白，仅有电子印章",
-                "likelihood": 0.90,
-            },
-        ]
+        Args:
+            business_type: 业务类型
+            dimensions: 风险评估维度
 
-        if risk_focus:
-            return [r for r in mock_risks if r["category"] in risk_focus]
+        Returns:
+            List[Dict[str, Any]]: 示例风险识别结果列表
+        """
+        mock_risks = []
+
+        # 根据风险维度生成示例风险
+        for dim in dimensions:
+            risk_type_info = self._risk_types.get(dim, {})
+
+            if dim == "credit_risk":
+                mock_risks.append({
+                    "risk_type": "credit_risk",
+                    "risk_name": risk_type_info.get("name", "信用风险"),
+                    "risk_description": "借款人资产负债率较高，现金流紧张，存在违约风险",
+                    "probability": "middle",
+                    "impact": "severe",
+                    "exposure_amount": 3000000,
+                    "recommendation": "加强贷后管理，密切监控借款人财务状况",
+                })
+
+            elif dim == "market_risk":
+                mock_risks.append({
+                    "risk_type": "market_risk",
+                    "risk_name": risk_type_info.get("name", "市场风险"),
+                    "risk_description": "贷款组合利率敏感性较高，利率上升可能导致利差收窄",
+                    "probability": "middle",
+                    "impact": "medium",
+                    "exposure_amount": 2000000,
+                    "recommendation": "优化利率风险管理，考虑使用利率互换工具",
+                })
+
+            elif dim == "operational_risk":
+                mock_risks.append({
+                    "risk_type": "operational_risk",
+                    "risk_name": risk_type_info.get("name", "操作风险"),
+                    "risk_description": "贷款审批流程存在权限管理漏洞，可能导致违规操作",
+                    "probability": "low",
+                    "impact": "medium",
+                    "exposure_amount": 500000,
+                    "recommendation": "完善权限管理体系，加强流程监控",
+                })
+
+            elif dim == "liquidity_risk":
+                mock_risks.append({
+                    "risk_type": "liquidity_risk",
+                    "risk_name": risk_type_info.get("name", "流动性风险"),
+                    "risk_description": "中长期贷款占比较高，可能导致资金期限错配",
+                    "probability": "low",
+                    "impact": "medium",
+                    "exposure_amount": 1500000,
+                    "recommendation": "优化资产负债结构，拓宽融资渠道",
+                })
+
+            elif dim == "compliance_risk":
+                mock_risks.append({
+                    "risk_type": "compliance_risk",
+                    "risk_name": risk_type_info.get("name", "合规风险"),
+                    "risk_description": "部分贷款合同条款不符合最新监管要求",
+                    "probability": "middle",
+                    "impact": "medium",
+                    "exposure_amount": 800000,
+                    "recommendation": "审查并修订合同条款，确保合规性",
+                })
+
         return mock_risks
 
-    def _rate_risks(self, risks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """对识别的风险进行评级和排序"""
-        for risk in risks:
-            # 计算综合风险得分（实际会使用更复杂的评分模型）
-            likelihood = risk.get("likelihood", 0.5)
-            impact = self._get_impact_weight(risk["level"])
-            risk["risk_score"] = likelihood * impact
+    def _calculate_overall_risk(self, risks: List[Dict[str, Any]]) -> float:
+        """
+        计算整体风险评分
 
-            # 添加风险等级标签
-            risk["level_label"] = {
-                RiskLevel.CRITICAL: "🔴 严重风险",
-                RiskLevel.HIGH: "🟠 高风险",
-                RiskLevel.MEDIUM: "🟡 中风险",
-                RiskLevel.LOW: "🟢 低风险",
-                RiskLevel.INFO: "🔵 提示",
-            }.get(risk["level"], "未知")
+        根据各风险项的概率和影响程度计算综合风险评分。
 
-        # 按风险得分降序排序
-        risks.sort(key=lambda x: x.get("risk_score", 0), reverse=True)
-        return risks
+        评分规则:
+            - 概率权重：high=3, middle=2, low=1
+            - 影响权重：severe=3, medium=2, mild=1
+            - 综合评分 = Σ(概率权重 × 影响权重) / 风险项数
 
-    def _get_impact_weight(self, level: str) -> float:
-        """获取风险等级对应的影响权重"""
-        weights = {
-            RiskLevel.CRITICAL: 1.0,
-            RiskLevel.HIGH: 0.8,
-            RiskLevel.MEDIUM: 0.5,
-            RiskLevel.LOW: 0.2,
-            RiskLevel.INFO: 0.1,
-        }
-        return weights.get(level, 0.3)
+        Args:
+            risks: 风险识别结果列表
 
-    def _generate_risk_summary(self, risks: List[Dict[str, Any]]) -> str:
-        """生成风险汇总摘要"""
+        Returns:
+            float: 整体风险评分（1-9）
+        """
         if not risks:
-            return "未识别到明显风险点"
+            return 1.0
 
-        level_counts = {}
+        # 定义概率和影响的权重映射
+        prob_weights = {"high": 3, "middle": 2, "low": 1}
+        impact_weights = {"severe": 3, "medium": 2, "mild": 1}
+
+        total_score = 0
         for risk in risks:
-            level = risk["level"]
-            level_counts[level] = level_counts.get(level, 0) + 1
+            prob = prob_weights.get(risk.get("probability", "low"), 1)
+            impact = impact_weights.get(risk.get("impact", "mild"), 1)
+            total_score += prob * impact
 
-        critical = level_counts.get(RiskLevel.CRITICAL, 0)
-        high = level_counts.get(RiskLevel.HIGH, 0)
-        medium = level_counts.get(RiskLevel.MEDIUM, 0)
-        low = level_counts.get(RiskLevel.LOW, 0)
+        return round(total_score / len(risks), 2)
 
-        summary_parts = [
-            f"共识别风险点{len(risks)}个",
-        ]
+    def _assess_overall_risk_level(self, score: float) -> str:
+        """
+        评估整体风险等级
 
-        if critical > 0:
-            summary_parts.append(f"严重风险{critical}个")
-        if high > 0:
-            summary_parts.append(f"高风险{high}个")
-        if medium > 0:
-            summary_parts.append(f"中风险{medium}个")
-        if low > 0:
-            summary_parts.append(f"低风险{low}个")
+        根据整体风险评分确定风险等级。
 
-        return "，".join(summary_parts)
+        等级划分:
+            - 高风险：7-9分
+            - 中风险：4-6分
+            - 低风险：1-3分
+
+        Args:
+            score: 整体风险评分
+
+        Returns:
+            str: 整体风险等级（high/middle/low）
+        """
+        if score >= 7:
+            return "high"
+        elif score >= 4:
+            return "middle"
+        else:
+            return "low"
 
     def _generate_recommendations(self, risks: List[Dict[str, Any]]) -> List[str]:
-        """生成风险缓释建议"""
+        """
+        生成风险缓释建议
+
+        从风险识别结果中提取建议，并添加通用风险防控建议。
+
+        Args:
+            risks: 风险识别结果列表
+
+        Returns:
+            List[str]: 风险缓释建议列表
+        """
         recommendations = []
 
-        # 高优先级风险建议
-        high_risks = [r for r in risks if r["level"] in [RiskLevel.CRITICAL, RiskLevel.HIGH]]
-        if high_risks:
-            recommendations.append(
-                f"⚠️ 立即关注{len(high_risks)}个高/严重风险点，制定专项整改方案"
-            )
+        # 提取每个风险项的建议
+        for risk in risks:
+            rec = risk.get("recommendation")
+            if rec and rec not in recommendations:
+                recommendations.append(rec)
 
-        # 分类建议
-        categories = set(r["category"] for r in risks)
-        for category in categories:
-            category_risks = [r for r in risks if r["category"] == category]
-            recommendations.append(
-                f"📋 针对{category}领域的{len(category_risks)}个风险点，"
-                f"建议开展专项检查，完善控制措施"
-            )
-
-        # 通用建议
-        recommendations.append("🔄 建立风险台账，定期跟踪整改进度")
-        recommendations.append("📊 完善风险识别规则库，提高自动化识别覆盖率")
+        # 添加通用风险防控建议
+        if risks:
+            recommendations.append("建议建立风险预警机制，及时发现潜在风险")
+            recommendations.append("建议定期开展风险评估，动态调整风险管理策略")
 
         return recommendations
 
-    def _calculate_confidence(self, risks: List[Dict[str, Any]]) -> float:
-        """计算整体置信度"""
-        if not risks:
-            return 0.5
+    def _generate_summary(
+        self, business_type: str, risks: List[Dict[str, Any]], risk_level: str
+    ) -> str:
+        """
+        生成风险识别摘要
 
-        avg_likelihood = sum(r.get("likelihood", 0.5) for r in risks) / len(risks)
-        return min(avg_likelihood + 0.1, 1.0)  # 基础置信度加10%
+        根据业务类型、风险数量和整体风险等级生成简洁的摘要文本。
+
+        Args:
+            business_type: 业务类型
+            risks: 风险识别结果列表
+            risk_level: 整体风险等级
+
+        Returns:
+            str: 风险识别摘要
+        """
+        risk_map = {"high": "高", "middle": "中", "low": "低"}
+
+        if not risks:
+            return f"{business_type}业务风险评估完成，未发现显著风险"
+
+        total_exposure = sum(r.get("exposure_amount", 0) for r in risks)
+
+        return (
+            f"{business_type}业务风险识别完成，共识别{len(risks)}项风险，"
+            f"总风险敞口{total_exposure}元，整体风险等级：{risk_map.get(risk_level, '未知')}"
+        )
+
+    def _calculate_confidence(self, risks: List[Dict[str, Any]]) -> float:
+        """
+        计算置信度分数
+
+        根据风险项的数量和严重程度计算置信度。
+
+        Args:
+            risks: 风险识别结果列表
+
+        Returns:
+            float: 置信度分数（0-1）
+        """
+        if not risks:
+            return 0.90
+
+        # 严重风险降低置信度
+        severe_count = sum(1 for r in risks if r.get("impact") == "severe")
+        confidence = 0.85 - (severe_count * 0.05)
+
+        return max(0.60, confidence)

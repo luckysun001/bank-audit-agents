@@ -1,18 +1,26 @@
 """
-报告撰写智能体 - 独立优化版
+报告撰写智能体模块
+
+负责生成银行审计报告，整合各智能体的分析结果。
 
 核心能力:
-1. 标准化审计报告生成
-2. 问题分级归类和描述
-3. 风险评估汇总和趋势分析
-4. 整改建议智能生成
-5. 多格式导出（Markdown、Word、PDF、HTML）
+    1. 整合多智能体分析结果
+    2. 生成结构化审计报告
+    3. 报告格式标准化（Word/PDF/HTML）
+    4. 关键发现和建议汇总
+
+报告类型:
+    - 信贷审计报告
+    - 合规审计报告
+    - 风险评估报告
+    - 综合审计报告
+
+工作模式:
+    - LLM 模式：使用 LLM 进行智能报告生成
+    - Mock 模式：未配置 API Key 时，返回示例报告内容
 """
 
-import json
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
-from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
 from bank_audit_agents.core.base_agent import (
     AgentResult,
@@ -23,536 +31,577 @@ from bank_audit_agents.core.base_agent import (
 from bank_audit_agents.utils.logger import get_logger
 from bank_audit_agents.utils.llm_client import get_llm_client
 
+# 获取模块级日志记录器
 logger = get_logger(__name__)
 
 
-class ReportFormat(str):
-    """报告格式"""
-    MARKDOWN = "markdown"
-    HTML = "html"
-    PLAIN_TEXT = "plain_text"
-
-
-class ReportStyle(str):
-    """报告风格"""
-    STANDARD = "standard"
-    CONCISE = "concise"
-    DETAILED = "detailed"
-    REGULATORY = "regulatory"
-
-
-@dataclass
-class ReportSection:
-    """报告章节"""
-    title: str
-    content: str
-    order: int = 0
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-    def to_markdown(self) -> str:
-        """转换为 Markdown 格式"""
-        return f"## {self.title}\n\n{self.content}\n\n"
-
-
-@dataclass
-class AuditFinding:
-    """审计发现项"""
-    finding_id: str
-    category: str
-    risk_level: str  # critical, high, medium, low
-    title: str
-    description: str
-    basis: str = ""  # 审计依据
-    evidence: str = ""
-    recommendation: str = ""
-    severity_score: float = 0.0
-
-    def to_markdown(self) -> str:
-        """转换为 Markdown 格式"""
-        level_emoji = {
-            "critical": "🔴",
-            "high": "🟠",
-            "medium": "🟡",
-            "low": "🟢",
-        }.get(self.risk_level, "⚪")
-
-        return (
-            f"{level_emoji} **{self.title}**\n\n"
-            f"**分类**: {self.category} | **风险等级**: {self.risk_level.upper()}\n\n"
-            f"**问题描述**: {self.description}\n\n"
-            + (f"**审计依据**: {self.basis}\n\n" if self.basis else "")
-            + (f"**审计证据**: {self.evidence}\n\n" if self.evidence else "")
-            + (f"**整改建议**: {self.recommendation}\n\n" if self.recommendation else "")
-        )
-
-
-class ReportTemplate:
-    """报告模板"""
-
-    @staticmethod
-    def get_header(
-        project_name: str,
-        audited_unit: str,
-        audit_period: str,
-    ) -> str:
-        """获取报告头部"""
-        return f"""# {project_name} 审计报告
-
-| 项目 | 内容 |
-|------|------|
-| **被审计单位** | {audited_unit} |
-| **审计期间** | {audit_period} |
-| **报告日期** | {datetime.now().strftime('%Y年%m月%d日')} |
-
----
-"""
-
-    @staticmethod
-    def get_summary_section(
-        total_findings: int,
-        risk_distribution: Dict[str, int],
-        compliance_score: float,
-    ) -> ReportSection:
-        """获取摘要章节"""
-        critical = risk_distribution.get("critical", 0)
-        high = risk_distribution.get("high", 0)
-        medium = risk_distribution.get("medium", 0)
-        low = risk_distribution.get("low", 0)
-
-        overall_assessment = ""
-        if critical > 0 or high >= 3:
-            overall_assessment = "整体风险较高，存在重大问题，需立即整改"
-        elif high > 0 or medium >= 5:
-            overall_assessment = "存在一定风险，需制定整改计划"
-        else:
-            overall_assessment = "整体风险可控，运营较为规范"
-
-        content = f"""本次审计共发现问题 **{total_findings}** 项，风险分布如下：
-
-- 🔴 **严重风险**: {critical} 项
-- 🟠 **高风险**: {high} 项
-- 🟡 **中风险**: {medium} 项
-- 🟢 **低风险**: {low} 项
-
-**综合合规评分**: {compliance_score:.1f}/100
-
-**整体评估**: {overall_assessment}
-"""
-        return ReportSection(title="一、审计摘要", content=content, order=1)
-
-    @staticmethod
-    def get_findings_section(findings: List[AuditFinding]) -> ReportSection:
-        """获取审计发现章节"""
-        content_parts = ["### 主要问题\n\n"]
-
-        # 按风险等级排序
-        sorted_findings = sorted(
-            findings,
-            key=lambda f: {"critical": 0, "high": 1, "medium": 2, "low": 3}.get(
-                f.risk_level, 99
-            ),
-        )
-
-        for finding in sorted_findings:
-            content_parts.append(finding.to_markdown())
-
-        return ReportSection(
-            title="二、审计发现的主要问题",
-            content="\n".join(content_parts),
-            order=2,
-        )
-
-    @staticmethod
-    def get_recommendations_section(recommendations: List[str]) -> ReportSection:
-        """获取整改建议章节"""
-        content = "### 主要整改建议\n\n"
-        for i, rec in enumerate(recommendations, 1):
-            content += f"{i}. {rec}\n\n"
-
-        return ReportSection(title="三、整改建议", content=content, order=3)
-
-    @staticmethod
-    def get_conclusion_section(conclusion_text: str) -> ReportSection:
-        """获取结论章节"""
-        return ReportSection(title="四、审计结论", content=conclusion_text, order=4)
-
-    @staticmethod
-    def get_footer() -> str:
-        """获取报告页脚"""
-        return f"""---
-
-*本报告由智能审计系统自动生成，如有疑问请联系审计部门。*
-*报告生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*
-"""
-
-
-class ReportGenerator:
-    """报告生成器"""
-
-    def __init__(self):
-        self.sections: List[ReportSection] = []
-
-    def add_section(self, section: ReportSection) -> None:
-        """添加章节"""
-        self.sections.append(section)
-        self.sections.sort(key=lambda s: s.order)
-
-    def generate_markdown(self) -> str:
-        """生成 Markdown 格式报告"""
-        parts = []
-        for section in self.sections:
-            parts.append(section.to_markdown())
-        parts.append(ReportTemplate.get_footer())
-        return "\n".join(parts)
-
-    def generate_plain_text(self) -> str:
-        """生成纯文本格式报告"""
-        markdown = self.generate_markdown()
-        # 简单的 Markdown 到纯文本转换
-        text = markdown.replace("## ", "").replace("### ", "")
-        text = text.replace("**", "").replace("`", "")
-        return text
-
-    def generate_html(self) -> str:
-        """生成 HTML 格式报告"""
-        md_content = self.generate_markdown()
-
-        # 简单的 Markdown 到 HTML 转换（实际可使用 markdown 库）
-        html_content = md_content.replace("## ", "<h2>").replace("\n\n", "</h2>\n\n")
-        html_content = html_content.replace("### ", "<h3>").replace("\n\n", "</h3>\n\n")
-        html_content = html_content.replace("**", "<strong>").replace("**", "</strong>")
-
-        return f"""<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-    <meta charset="UTF-8">
-    <title>审计报告</title>
-    <style>
-        body {{ font-family: "Microsoft YaHei", sans-serif; max-width: 1000px; margin: 0 auto; padding: 20px; }}
-        h1 {{ color: #1a365d; border-bottom: 2px solid #3182ce; padding-bottom: 10px; }}
-        h2 {{ color: #2d3748; margin-top: 30px; }}
-        h3 {{ color: #4a5568; }}
-        table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
-        th, td {{ border: 1px solid #e2e8f0; padding: 12px; text-align: left; }}
-        th {{ background-color: #f7fafc; }}
-    </style>
-</head>
-<body>
-{html_content}
-</body>
-</html>
-"""
+# 报告模板定义（模拟）
+REPORT_TEMPLATES = {
+    # 信贷审计报告模板
+    "loan_audit": {
+        "title": "信贷业务审计报告",
+        "sections": [
+            {"name": "审计概况", "order": 1},
+            {"name": "文档解析结果", "order": 2},
+            {"name": "合规检查结果", "order": 3},
+            {"name": "风险识别结果", "order": 4},
+            {"name": "关键发现", "order": 5},
+            {"name": "整改建议", "order": 6},
+            {"name": "审计结论", "order": 7},
+        ],
+    },
+    # 合规审计报告模板
+    "compliance_audit": {
+        "title": "合规审计报告",
+        "sections": [
+            {"name": "审计概况", "order": 1},
+            {"name": "合规检查结果", "order": 2},
+            {"name": "违规事项汇总", "order": 3},
+            {"name": "风险评估", "order": 4},
+            {"name": "整改建议", "order": 5},
+            {"name": "审计结论", "order": 6},
+        ],
+    },
+    # 风险评估报告模板
+    "risk_assessment": {
+        "title": "风险评估报告",
+        "sections": [
+            {"name": "评估概况", "order": 1},
+            {"name": "风险识别结果", "order": 2},
+            {"name": "风险敞口分析", "order": 3},
+            {"name": "风险等级评估", "order": 4},
+            {"name": "风险缓释建议", "order": 5},
+            {"name": "评估结论", "order": 6},
+        ],
+    },
+    # 综合审计报告模板
+    "comprehensive": {
+        "title": "综合审计报告",
+        "sections": [
+            {"name": "审计概况", "order": 1},
+            {"name": "文档解析结果", "order": 2},
+            {"name": "合规检查结果", "order": 3},
+            {"name": "风险识别结果", "order": 4},
+            {"name": "关键发现", "order": 5},
+            {"name": "风险评估", "order": 6},
+            {"name": "整改建议", "order": 7},
+            {"name": "审计结论", "order": 8},
+        ],
+    },
+}
 
 
 class ReportWriterAgent(BaseAgent):
     """
     报告撰写智能体
 
-    负责整合各智能体的输出，生成标准化的审计报告。
+    继承自 BaseAgent，实现审计报告生成的核心业务逻辑。
+
+    核心职责:
+        1. 整合各智能体的分析结果
+        2. 根据报告类型选择合适的模板
+        3. 生成结构化的审计报告
+        4. 汇总关键发现和整改建议
+
+    输入数据要求:
+        - report_type: 报告类型（loan_audit/compliance_audit/risk_assessment/comprehensive）
+        - audit_data: 审计数据（包含各智能体的分析结果）
+        - report_format: 报告格式（可选，默认 markdown）
     """
 
     def __init__(self, agent_id: Optional[str] = None, **kwargs):
+        """
+        初始化报告撰写智能体
+
+        Args:
+            agent_id: 智能体 ID（可选，不提供则自动生成）
+            **kwargs: 其他传递给父类的参数
+        """
         super().__init__(AgentType.REPORT_WRITER, agent_id, **kwargs)
-        self.report_generator = ReportGenerator()
+        # 获取 LLM 客户端（支持 mock fallback）
         self._llm = get_llm_client()
+        # 加载报告模板
+        self._report_templates = REPORT_TEMPLATES
 
     def get_system_prompt(self) -> str:
-        return """你是一位资深银行审计报告撰写专家，具有15年以上审计报告撰写经验。
+        """
+        获取智能体的系统提示词
+
+        定义智能体的角色为银行审计报告专家，明确职责和输出要求。
+
+        Returns:
+            str: 系统提示词文本
+        """
+        return """你是一位资深银行审计报告专家，具有15年以上审计报告撰写经验。
 
 你的核心职责:
-1. 生成专业、规范、准确的审计报告
-2. 对审计发现进行结构化整理和分级归类
-3. 撰写专业的风险评估和影响分析
-4. 提出有针对性、可落地的整改建议
-5. 确保报告符合银行审计规范和监管要求
+1. 整合各智能体的分析结果，生成结构化审计报告
+2. 清晰呈现审计发现、风险评估和整改建议
+3. 确保报告内容准确、客观、专业
+4. 符合银行审计报告的格式规范和语言要求
 
-报告撰写原则:
-- 客观中立：基于事实描述，避免主观臆断
-- 条理清晰：使用规范的审计报告结构
-- 专业严谨：使用审计专业术语，表述准确无误
-- 重点突出：高风险问题优先，突出重点
-- 可操作性：整改建议具体明确，可落地执行
+报告撰写标准:
+- 结构清晰，逻辑严谨
+- 数据准确，来源明确
+- 语言专业，表达简洁
+- 建议具体，可操作性强
 
 输出要求:
-- 结构完整：摘要、审计发现、风险评估、整改建议、结论
-- 分类清晰：按风险等级和业务领域分类展示问题
-- 表述专业：使用标准审计术语
-- 建议可行：整改建议具体、可衡量、可实现
+- 以结构化 JSON 格式输出，包含 report_content 对象
+- report_content 包含：title, sections 数组
+- 每个 section 包含：name, content
 """
 
     def get_tools(self) -> List[Any]:
-        """获取可用工具列表"""
+        """
+        获取智能体可用的工具列表
+
+        列出报告撰写相关的工具，实际项目中会接入真实的报告生成工具。
+
+        Returns:
+            List[Any]: 工具名称列表
+        """
         return [
-            "report_template_engine",
-            "recommendation_generator",
-            "risk_aggregator",
-            "format_converter",
-            "audit_lexicon",
+            "report_template_loader",    # 报告模板加载器
+            "data_aggregator",           # 数据聚合工具
+            "format_converter",          # 格式转换工具（MD→PDF/Word）
+            "report_validator",          # 报告验证工具
+            "report_storer",             # 报告存储工具
         ]
 
     async def execute(self, task: Task) -> AgentResult:
-        """执行报告撰写任务"""
-        logger.info(f"📝 报告撰写智能体开始处理任务: {task.task_id}")
+        """
+        执行报告撰写任务
 
-        findings_data = task.input_data.get("findings", [])
-        audit_context = task.input_data.get("audit_context", {})
-        report_style = task.input_data.get("report_style", ReportStyle.STANDARD)
-        output_format = task.input_data.get("output_format", ReportFormat.MARKDOWN)
+        核心执行流程:
+            1. 验证输入参数（报告类型、审计数据）
+            2. 根据报告类型选择模板
+            3. 整合各智能体的分析结果
+            4. 调用 _generate_report_content 生成报告内容
+            5. 调用 _format_report 格式化报告
+            6. 返回包含报告内容的 AgentResult
 
-        try:
-            # 1. 处理审计发现
-            processed_findings = self._process_findings(findings_data)
+        Args:
+            task: 任务对象，包含输入数据
 
-            # 2. 分析风险分布
-            risk_distribution = self._analyze_risk_distribution(processed_findings)
+        Returns:
+            AgentResult: 执行结果
+        """
+        logger.info(f"报告撰写智能体开始处理任务: {task.task_id}")
 
-            # 3. 计算合规得分
-            compliance_score = self._calculate_compliance_score(processed_findings)
+        # 从任务输入数据中提取参数
+        report_type = task.input_data.get("report_type", "comprehensive")
+        audit_data = task.input_data.get("audit_data", {})
+        report_format = task.input_data.get("report_format", "markdown")
 
-            # 4. 生成整改建议
-            recommendations = self._generate_recommendations(processed_findings)
-
-            # 5. 生成报告
-            report_content = self._generate_report(
-                findings=processed_findings,
-                risk_distribution=risk_distribution,
-                compliance_score=compliance_score,
-                recommendations=recommendations,
-                context=audit_context,
-                style=report_style,
-                output_format=output_format,
-            )
-
-            # 6. 生成统计摘要
-            summary = self._generate_summary(processed_findings, compliance_score)
-
-            result = AgentResult(
-                agent_id=self.agent_id,
-                agent_type=self.agent_type.value,
-                success=True,
-                summary=summary,
-                findings=[{"type": "report_generated", "content": f"报告包含 {len(processed_findings)} 个发现项"}],
-                recommendations=recommendations,
-                confidence_score=0.95,
-                output_data={
-                    "report_content": report_content,
-                    "report_format": output_format,
-                    "findings_count": len(processed_findings),
-                    "risk_distribution": risk_distribution,
-                    "compliance_score": compliance_score,
-                },
-            )
-
-            logger.info(f"✅ 报告生成完成: {len(processed_findings)} 个发现项")
-            return result
-
-        except Exception as e:
-            logger.error(f"❌ 报告生成失败: {str(e)}")
+        # 验证必填参数
+        if not audit_data:
             return AgentResult(
                 agent_id=self.agent_id,
                 agent_type=self.agent_type.value,
                 success=False,
-                summary=f"报告生成失败: {str(e)}",
-                error=str(e),
+                summary="缺少审计数据参数",
+                error="audit_data is required",
                 confidence_score=0.0,
             )
 
-    def _process_findings(self, findings_data: List[Dict[str, Any]]) -> List[AuditFinding]:
-        """处理审计发现数据"""
-        findings = []
+        # 获取报告模板
+        template = self._get_report_template(report_type)
 
-        for i, data in enumerate(findings_data):
-            finding = AuditFinding(
-                finding_id=data.get("finding_id", f"FIND-{i:03d}"),
-                category=data.get("category", "其他"),
-                risk_level=data.get("risk_level", "medium"),
-                title=data.get("title", f"问题 {i+1}"),
-                description=data.get("description", ""),
-                basis=data.get("basis", ""),
-                evidence=data.get("evidence", ""),
-                recommendation=data.get("recommendation", ""),
-                severity_score=data.get("severity_score", 0.5),
-            )
-            findings.append(finding)
+        # 整合各智能体的分析结果
+        aggregated_data = self._aggregate_audit_data(audit_data)
 
-        return findings
+        # 生成报告内容（LLM 驱动，mock 模式下回退到示例数据）
+        report_content = await self._generate_report_content(
+            report_type, template, aggregated_data
+        )
 
-    def _analyze_risk_distribution(self, findings: List[AuditFinding]) -> Dict[str, int]:
-        """分析风险分布"""
-        distribution: Dict[str, int] = {
-            "critical": 0,
-            "high": 0,
-            "medium": 0,
-            "low": 0,
+        # 格式化报告
+        formatted_report = self._format_report(report_content, report_format)
+
+        # 生成摘要
+        summary = self._generate_summary(report_type, report_content)
+
+        # 返回执行结果
+        return AgentResult(
+            agent_id=self.agent_id,
+            agent_type=self.agent_type.value,
+            success=True,
+            summary=summary,
+            findings=report_content,
+            recommendations=[
+                "建议对报告内容进行人工审核",
+                "建议按照整改建议制定整改计划",
+            ],
+            confidence_score=0.88,
+            metadata={
+                "report_type": report_type,
+                "report_format": report_format,
+                "sections_count": len(report_content.get("sections", [])),
+                "source_data_sources": len(audit_data),
+            },
+        )
+
+    def _get_report_template(self, report_type: str) -> Dict[str, Any]:
+        """
+        获取报告模板
+
+        根据报告类型选择合适的模板，如果未找到则使用默认模板。
+
+        Args:
+            report_type: 报告类型
+
+        Returns:
+            Dict[str, Any]: 报告模板
+        """
+        return self._report_templates.get(report_type, self._report_templates["comprehensive"])
+
+    def _aggregate_audit_data(self, audit_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        整合审计数据
+
+        将各智能体的分析结果整合成统一的数据结构，便于报告生成。
+
+        Args:
+            audit_data: 原始审计数据（各智能体的分析结果）
+
+        Returns:
+            Dict[str, Any]: 整合后的审计数据
+        """
+        aggregated = {
+            "document_parser": audit_data.get("document_parser", {}),
+            "compliance_checker": audit_data.get("compliance_checker", {}),
+            "risk_identifier": audit_data.get("risk_identifier", {}),
+            "quality_coordinator": audit_data.get("quality_coordinator", {}),
         }
 
-        for finding in findings:
-            level = finding.risk_level.lower()
-            if level in distribution:
-                distribution[level] += 1
+        # 汇总所有发现和建议
+        all_findings = []
+        all_recommendations = []
 
-        return distribution
+        for agent_name, agent_data in aggregated.items():
+            if isinstance(agent_data, dict):
+                findings = agent_data.get("findings", [])
+                recommendations = agent_data.get("recommendations", [])
+                if isinstance(findings, list):
+                    all_findings.extend(findings)
+                if isinstance(recommendations, list):
+                    all_recommendations.extend(recommendations)
 
-    def _calculate_compliance_score(self, findings: List[AuditFinding]) -> float:
-        """计算合规得分 (0-100)"""
-        if not findings:
-            return 100.0
+        aggregated["all_findings"] = all_findings
+        aggregated["all_recommendations"] = all_recommendations
 
-        # 风险权重
-        weights = {
-            "critical": 20,
-            "high": 10,
-            "medium": 5,
-            "low": 2,
+        return aggregated
+
+    async def _generate_report_content(
+        self, report_type: str, template: Dict[str, Any], aggregated_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        生成报告内容
+
+        工作机制:
+            1. 构造报告生成提示词
+            2. 调用 LLM 进行智能报告撰写
+            3. 如果 LLM 不可用，使用 mock fallback 返回示例报告内容
+
+        Args:
+            report_type: 报告类型
+            template: 报告模板
+            aggregated_data: 整合后的审计数据
+
+        Returns:
+            Dict[str, Any]: 报告内容
+        """
+        # 构造用户提示词
+        user_prompt = {
+            "report_type": report_type,
+            "template": template,
+            "audit_data": aggregated_data,
+            "writing_requirements": "请根据审计数据和模板，撰写一份专业的银行审计报告。",
         }
 
-        total_deduction = sum(
-            weights.get(f.risk_level.lower(), 5) for f in findings
-        )
+        # 定义 mock fallback 函数，返回示例报告内容
+        def _mock_fallback():
+            return self._get_mock_report_content(report_type, template)
 
-        return max(100.0 - total_deduction, 0.0)
-
-    def _generate_recommendations(self, findings: List[AuditFinding]) -> List[str]:
-        """生成整改建议"""
-        recommendations = []
-
-        # 按严重程度统计
-        critical_count = sum(1 for f in findings if f.risk_level == "critical")
-        high_count = sum(1 for f in findings if f.risk_level == "high")
-
-        if critical_count + high_count > 0:
-            recommendations.append(
-                f"针对发现的 {critical_count} 项严重风险和 {high_count} 项高风险问题，"
-                f"建议立即成立专项整改小组，制定详细整改计划。"
-            )
-
-        # 按分类生成建议
-        categories = set(f.category for f in findings)
-        for category in categories:
-            category_findings = [f for f in findings if f.category == category]
-            recommendations.append(
-                f"针对{category}领域发现的 {len(category_findings)} 项问题，"
-                f"建议开展专项检查，完善相关制度流程。"
-            )
-
-        # 通用建议
-        recommendations.append(
-            "建立问题台账，明确整改责任人、整改期限和验收标准，"
-            "定期跟踪整改进度，确保整改工作落到实处。"
-        )
-
-        recommendations.append(
-            "加强员工培训，提升合规意识和风险防范能力，"
-            "建立健全内部控制长效机制。"
-        )
-
-        return recommendations
-
-    def _generate_report(
-        self,
-        findings: List[AuditFinding],
-        risk_distribution: Dict[str, int],
-        compliance_score: float,
-        recommendations: List[str],
-        context: Dict[str, Any],
-        style: str,
-        output_format: str,
-    ) -> str:
-        """生成报告内容"""
-        generator = ReportGenerator()
-
-        # 添加报告头部
-        project_name = context.get("project_name", "审计项目")
-        audited_unit = context.get("audited_unit", "被审计单位")
-        audit_period = context.get("audit_period", "审计期间")
-        header = ReportTemplate.get_header(project_name, audited_unit, audit_period)
-
-        # 添加摘要章节
-        summary_section = ReportTemplate.get_summary_section(
-            total_findings=len(findings),
-            risk_distribution=risk_distribution,
-            compliance_score=compliance_score,
-        )
-        generator.add_section(summary_section)
-
-        # 添加审计发现章节
-        if findings:
-            findings_section = ReportTemplate.get_findings_section(findings)
-            generator.add_section(findings_section)
-
-        # 添加整改建议章节
-        rec_section = ReportTemplate.get_recommendations_section(recommendations)
-        generator.add_section(rec_section)
-
-        # 添加结论章节
-        conclusion_text = self._generate_conclusion(compliance_score, len(findings))
-        conclusion_section = ReportTemplate.get_conclusion_section(conclusion_text)
-        generator.add_section(conclusion_section)
-
-        # 根据格式输出
-        if output_format == ReportFormat.HTML:
-            return header + generator.generate_html()
-        elif output_format == ReportFormat.PLAIN_TEXT:
-            return header + generator.generate_plain_text()
-        else:  # Markdown
-            return header + generator.generate_markdown()
-
-    async def _generate_recommendations_llm(self, findings: List[AuditFinding]) -> List[str]:
-        """使用 LLM 生成整改建议（mock 模式下回退到模板生成）"""
-        findings_summary = json.dumps([
-            {"category": f.category, "risk_level": f.risk_level, "title": f.title, "description": f.description}
-            for f in findings
-        ], ensure_ascii=False)
-
-        def _template_fallback():
-            return self._generate_recommendations(findings)
-
+        # 调用 LLM（带 fallback）
         result = await self._llm.call_with_fallback(
-            system_prompt=self.get_system_prompt() + "\n\n请以 JSON 格式返回结果，包含一个 'recommendations' 数组，每个元素是一个字符串。",
-            user_prompt=f"根据以下审计发现，生成有针对性的整改建议：\n{findings_summary}",
-            fallback_fn=_template_fallback,
+            system_prompt=self.get_system_prompt(),
+            user_prompt=str(user_prompt),
+            fallback_fn=_mock_fallback,
             response_format_json=True,
         )
 
-        if isinstance(result, dict) and "recommendations" in result:
-            return result["recommendations"]
-        elif isinstance(result, list):
+        # 处理 LLM 返回结果
+        if isinstance(result, dict) and "report_content" in result:
+            return result["report_content"]
+        elif isinstance(result, dict):
             return result
         else:
-            return self._generate_recommendations(findings)
+            logger.warning("LLM 返回格式异常，使用 mock 数据")
+            return self._get_mock_report_content(report_type, template)
 
-    def _generate_conclusion(self, compliance_score: float, finding_count: int) -> str:
-        """生成审计结论"""
-        if compliance_score >= 90:
-            assessment = "整体运营情况良好，内部控制有效，风险可控。"
-        elif compliance_score >= 75:
-            assessment = "整体运营较为规范，存在一定风险隐患，需持续改进。"
-        elif compliance_score >= 60:
-            assessment = "存在较多风险隐患，内部控制有待加强，需认真整改。"
-        else:
-            assessment = "存在严重风险隐患，内部控制存在重大缺陷，需立即整改。"
+    def _get_mock_report_content(self, report_type: str, template: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        返回示例报告内容（mock fallback）
 
-        return f"""本次审计共发现问题 {finding_count} 项，综合合规评分 {compliance_score:.1f} 分。
+        根据报告类型和模板返回不同的示例报告数据，
+        用于开发测试和演示目的。
 
-{assessment}
+        Args:
+            report_type: 报告类型
+            template: 报告模板
 
-希望被审计单位高度重视本次审计发现的问题，认真落实各项整改措施，举一反三，持续完善内部控制体系，提升风险管理水平。
+        Returns:
+            Dict[str, Any]: 示例报告内容
+        """
+        # 获取模板定义的章节
+        sections = []
+        for section_def in template.get("sections", []):
+            section_name = section_def["name"]
 
-审计组将持续跟踪整改进展，适时开展整改回头看，确保审计成果得到有效应用。
-"""
+            if section_name == "审计概况":
+                sections.append({
+                    "name": "审计概况",
+                    "content": """## 审计概况
 
-    def _generate_summary(self, findings: List[AuditFinding], compliance_score: float) -> str:
-        """生成执行摘要"""
-        level_counts = {
-            "critical": sum(1 for f in findings if f.risk_level == "critical"),
-            "high": sum(1 for f in findings if f.risk_level == "high"),
-            "medium": sum(1 for f in findings if f.risk_level == "medium"),
+### 审计对象
+本次审计对象为某某科技有限公司的信贷业务。
+
+### 审计范围
+- 信贷合同合规性审查
+- 风险评估与管理
+- 内部控制有效性评价
+
+### 审计方法
+- 文档资料审查
+- 合规性检查
+- 风险识别与评估
+
+### 审计期间
+2024年1月1日至2024年12月31日""",
+                })
+
+            elif section_name == "文档解析结果":
+                sections.append({
+                    "name": "文档解析结果",
+                    "content": """## 文档解析结果
+
+### 提取的关键信息
+| 字段 | 值 | 置信度 |
+|------|-----|--------|
+| 借款人 | 某某科技有限公司 | 99% |
+| 贷款金额 | 500万元 | 95% |
+| 贷款期限 | 12个月 | 98% |
+| 利率 | 4.35% | 92% |
+| 担保人 | 某某担保集团 | 90% |
+
+### 文档分类
+- 文档类型：信贷合同
+- 文档状态：有效""",
+                })
+
+            elif section_name == "合规检查结果":
+                sections.append({
+                    "name": "合规检查结果",
+                    "content": """## 合规检查结果
+
+### 违规事项汇总
+1. **贷款审批流程不合规**
+   - 法规依据：商业银行互联网贷款管理暂行办法（CBIRC-2020-5）
+   - 违规描述：缺少风控部门独立审批环节
+   - 风险等级：中
+   - 整改建议：补充风控部门独立审批环节
+
+2. **利率定价超授权**
+   - 法规依据：信贷业务审批管理办法（INT-LOAN-001）
+   - 违规描述：利率超出授权范围0.5个百分点
+   - 风险等级：高
+   - 整改建议：调整利率至授权范围""",
+                })
+
+            elif section_name == "风险识别结果":
+                sections.append({
+                    "name": "风险识别结果",
+                    "content": """## 风险识别结果
+
+### 识别的风险项
+1. **信用风险**
+   - 描述：借款人资产负债率较高，存在违约风险
+   - 概率：中
+   - 影响：严重
+   - 敞口金额：300万元
+
+2. **市场风险**
+   - 描述：利率敏感性较高，利率上升可能导致利差收窄
+   - 概率：中
+   - 影响：中等
+   - 敞口金额：200万元
+
+3. **操作风险**
+   - 描述：审批流程存在权限管理漏洞
+   - 概率：低
+   - 影响：中等
+   - 敞口金额：50万元
+
+### 整体风险评估
+- 综合风险评分：5.5分
+- 整体风险等级：中""",
+                })
+
+            elif section_name == "关键发现":
+                sections.append({
+                    "name": "关键发现",
+                    "content": """## 关键发现
+
+### 主要问题
+1. **合规风险突出**：存在2项违规事项，其中1项为高风险
+2. **信用风险值得关注**：借款人财务状况一般，需加强贷后管理
+3. **内部控制存在缺陷**：审批流程权限管理不够完善
+
+### 问题根源分析
+- 制度执行不到位
+- 风险管理意识有待加强
+- 流程监控机制不完善""",
+                })
+
+            elif section_name == "整改建议":
+                sections.append({
+                    "name": "整改建议",
+                    "content": """## 整改建议
+
+### 短期措施（1-3个月）
+1. 立即调整贷款利率至授权范围内
+2. 补充风控部门独立审批环节
+3. 完善权限管理体系
+
+### 中期措施（3-6个月）
+1. 建立定期合规检查机制
+2. 加强员工合规培训
+3. 优化贷后管理流程
+
+### 长期措施（6个月以上）
+1. 建立风险预警机制
+2. 完善内部控制体系
+3. 加强风险管理文化建设""",
+                })
+
+            elif section_name == "审计结论":
+                sections.append({
+                    "name": "审计结论",
+                    "content": """## 审计结论
+
+### 总体评价
+本次信贷业务审计发现存在一定的合规风险和信用风险，整体风险等级为中等。
+
+### 审计意见
+1. **保留意见**：建议对发现的问题进行整改
+2. **整改期限**：建议在3个月内完成整改
+3. **后续跟踪**：建议对整改情况进行后续跟踪检查
+
+### 报告日期
+2024年12月31日""",
+                })
+
+            else:
+                sections.append({
+                    "name": section_name,
+                    "content": f"## {section_name}\n\n本章节内容待补充。",
+                })
+
+        return {
+            "title": template.get("title", "审计报告"),
+            "sections": sections,
         }
 
-        return (
-            f"审计报告已生成，共发现问题 {len(findings)} 项，"
-            f"其中严重风险 {level_counts['critical']} 项，"
-            f"高风险 {level_counts['high']} 项，"
-            f"中风险 {level_counts['medium']} 项，"
-            f"综合合规评分 {compliance_score:.1f} 分。"
-        )
+    def _format_report(self, report_content: Dict[str, Any], report_format: str) -> str:
+        """
+        格式化报告
+
+        将结构化报告内容转换为指定格式的文本。
+
+        Args:
+            report_content: 结构化报告内容
+            report_format: 报告格式（markdown/html/pdf/word）
+
+        Returns:
+            str: 格式化后的报告文本
+        """
+        if report_format == "markdown":
+            return self._format_to_markdown(report_content)
+        elif report_format == "html":
+            return self._format_to_html(report_content)
+        else:
+            return self._format_to_markdown(report_content)
+
+    def _format_to_markdown(self, report_content: Dict[str, Any]) -> str:
+        """
+        转换为 Markdown 格式
+
+        Args:
+            report_content: 结构化报告内容
+
+        Returns:
+            str: Markdown 格式报告
+        """
+        lines = []
+        lines.append(f"# {report_content.get('title', '审计报告')}")
+        lines.append("")
+
+        for section in report_content.get("sections", []):
+            lines.append(section.get("content", ""))
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def _format_to_html(self, report_content: Dict[str, Any]) -> str:
+        """
+        转换为 HTML 格式
+
+        Args:
+            report_content: 结构化报告内容
+
+        Returns:
+            str: HTML 格式报告
+        """
+        lines = []
+        lines.append("<!DOCTYPE html>")
+        lines.append("<html lang='zh-CN'>")
+        lines.append("<head>")
+        lines.append(f"<title>{report_content.get('title', '审计报告')}</title>")
+        lines.append("<meta charset='UTF-8'>")
+        lines.append("<style>body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }</style>")
+        lines.append("</head>")
+        lines.append("<body>")
+
+        for section in report_content.get("sections", []):
+            content = section.get("content", "")
+            content = content.replace("# ", "<h1>").replace("#", "</h1>")
+            content = content.replace("## ", "<h2>").replace("##", "</h2>")
+            content = content.replace("### ", "<h3>").replace("###", "</h3>")
+            content = content.replace("**", "<strong>").replace("**", "</strong>")
+            content = content.replace("\n", "<br>")
+            lines.append(content)
+
+        lines.append("</body>")
+        lines.append("</html>")
+
+        return "\n".join(lines)
+
+    def _generate_summary(self, report_type: str, report_content: Dict[str, Any]) -> str:
+        """
+        生成报告摘要
+
+        根据报告类型和内容生成简洁的摘要文本。
+
+        Args:
+            report_type: 报告类型
+            report_content: 报告内容
+
+        Returns:
+            str: 报告摘要
+        """
+        section_count = len(report_content.get("sections", []))
+        title = report_content.get("title", "审计报告")
+
+        return f"{title}已生成，共包含{section_count}个章节"
