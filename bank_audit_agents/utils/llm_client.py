@@ -4,6 +4,7 @@ LLM 客户端模块
 """
 import json
 import asyncio
+import hashlib
 from typing import Any, Dict, List, Optional
 
 from bank_audit_agents.config.settings import get_settings
@@ -23,6 +24,7 @@ class LLMClient:
         self.settings = settings or get_settings()
         self._client = None
         self._is_available = bool(self.settings.openai_api_key)
+        self._response_cache: Dict[str, str] = {}
 
         if self._is_available:
             try:
@@ -44,6 +46,18 @@ class LLMClient:
     @property
     def is_mock_mode(self) -> bool:
         return not self._is_available
+
+    @staticmethod
+    def _make_cache_key(
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float,
+        max_tokens: int,
+        response_format_json: bool,
+    ) -> str:
+        """根据请求参数生成缓存键。"""
+        raw = f"{system_prompt}|{user_prompt}|{temperature}|{max_tokens}|{response_format_json}"
+        return hashlib.md5(raw.encode("utf-8")).hexdigest()
 
     async def chat(
         self,
@@ -72,6 +86,11 @@ class LLMClient:
         temp = temperature if temperature is not None else self.settings.llm_temperature
         tokens = max_tokens or self.settings.llm_max_tokens
 
+        cache_key = self._make_cache_key(system_prompt, user_prompt, temp, tokens, response_format_json)
+        if cache_key in self._response_cache:
+            logger.debug("LLM 响应命中本地缓存")
+            return self._response_cache[cache_key]
+
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -92,6 +111,8 @@ class LLMClient:
                 response = await self._client.chat.completions.create(**kwargs)
                 content = response.choices[0].message.content
                 logger.debug(f"LLM 调用成功，返回 {len(content)} 字符")
+                if len(self._response_cache) < 1024:
+                    self._response_cache[cache_key] = content
                 return content
             except Exception as e:
                 logger.warning(f"LLM 调用失败（第 {attempt + 1} 次）: {e}")
