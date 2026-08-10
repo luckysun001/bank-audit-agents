@@ -2,6 +2,7 @@
 文档解析智能体
 负责解析和理解各类审计文档，提取关键信息
 """
+import asyncio
 import json
 from typing import Any, Dict, List, Optional
 
@@ -15,6 +16,12 @@ from bank_audit_agents.utils.logger import get_logger
 from bank_audit_agents.utils.llm_client import get_llm_client
 
 logger = get_logger(__name__)
+
+
+def _read_text(path: str) -> str:
+    """同步读取文本文件内容（在线程池中执行，避免阻塞 asyncio 事件循环）。"""
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
 
 
 class DocumentParserAgent(BaseAgent):
@@ -117,8 +124,7 @@ class DocumentParserAgent(BaseAgent):
         # 尝试读取文档内容（如果路径是文本文件）
         document_text = ""
         try:
-            with open(document_path, "r", encoding="utf-8") as f:
-                document_text = f.read()[:4000]
+            document_text = (await asyncio.to_thread(_read_text, document_path))[:4000]
         except Exception:
             document_text = f"[文档路径: {document_path}]"
 
