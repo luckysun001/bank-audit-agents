@@ -5,7 +5,7 @@ description = "银行审计部多智能体协作平台 - 基于多智能体系�
 authors = ["Bank AI Lab"]
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/opensource-ai-projects/bank-audit-agents"
+repository = "https://github.com/luckysun001/bank-audit-agents"
 keywords = ["multi-agent", "audit", "banking", "llm", "langchain", "agents", "ai", "artificial-intelligence"]
 classifiers = [
     "Development Status :: 4 - Beta",

@@ -30,8 +30,8 @@
 
 ```bash
 # Fork 并克隆项目
-git clone https://github.com/opensource-ai-projects/opensource.git
-cd opensource
+git clone https://github.com/luckysun001/bank-audit-agents.git
+cd bank-audit-agents
 
 # 创建虚拟环境
 python -m venv .venv
