@@ -93,7 +93,7 @@ cp .env.example .env
 
 ## 技术栈
 
-- Python 3.10+
+- Python 3.11+
 - LangChain / LangGraph（Agent 编排，TODO 集成）
 - FastAPI（API 框架）
 - Streamlit（Dashboard）

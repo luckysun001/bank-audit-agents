@@ -12,7 +12,6 @@ classifiers = [
     "Intended Audience :: Financial and Insurance Industry",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Office/Business :: Financial",
@@ -20,7 +19,9 @@ classifiers = [
 ]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.13"
+# 说明：chromadb 依赖的 onnxruntime 自 1.24.4 起要求 Python >=3.11（不再发布 cp310 轮子），
+# 因此本项目的 Python 下限调整为 3.11。
+python = ">=3.11,<3.13"
 # 注意：^0.0.x 形式的约束会把版本锁死到唯一一个小版本，极易与生态内其他包冲突
 # （langchain-community 0.0.20 与 langgraph 0.0.48 的 langsmith 要求互不兼容），
 # 因此这里统一放宽为区间约束，交给 poetry 解析器选取互相兼容的组合。
@@ -89,6 +90,6 @@ select = ["E", "F", "I", "W", "B", "C4", "SIM"]
 ignore = ["E501"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 warn_return_any = true
 ignore_missing_imports = true
