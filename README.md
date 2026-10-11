@@ -2,31 +2,55 @@
 
 多智能体协同的银行审计框架，通过角色分工协作完成审计流程。
 
-> **状态：Alpha (v1.0.0)** — Agent 架构和编排器已实现，Agent 执行逻辑当前为 mock 模拟，真实 LLM 集成为 TODO。
+[![CI](https://github.com/luckysun001/bank-audit-agents/actions/workflows/ci.yml/badge.svg)](https://github.com/luckysun001/bank-audit-agents/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+
+> **状态：Beta (v1.0.0)** — Agent 架构、编排器与三种审计流水线已实现；
+> 5 个 Agent 的执行逻辑均为 **LLM 驱动 + mock 回退**双模式：配置 `openai_api_key` 走真实模型，未配置自动降级为示例数据。
 
 ---
 
 ## 已实现
 
-- **BaseAgent 抽象基类**：含状态机、消息队列、回调机制、健康检查
-- **5 个 Agent 实现**：
-  - DocumentParser（资料收集）
-  - ComplianceChecker（合规检查）
-  - RiskIdentifier（风险识别）
-  - ReportWriter（报告编写）
-  - QualityCoordinator（质量复核 + 任务协调）
-- **Orchestrator 编排器**：优先级队列、任务依赖图、超时监控、优雅关闭、P95 指标
-- **审计流水线**：信贷审计、合规审计、财务审计三种工作流模板
-- **Streamlit Dashboard**：基础可视化界面
-- **配置管理**：Pydantic Settings
+### 核心层
 
-## 当前限制
+- **BaseAgent 抽象基类**（`core/base_agent.py`）：状态机（`AgentStatus`/`TaskStatus`）、
+  任务重试与超时、消息队列（请求/响应、未读与最近消息）、会话历史与知识注入、回调机制、健康检查
+- **AgentOrchestrator 编排器**（`core/orchestrator.py`）：Agent 注册与按类型/空闲择优选派、
+  优先级任务队列、任务依赖图（依赖未满足则挂起）、批量提交、超时监控、优雅关闭、
+  指标采集（平均耗时 / **P95** / 运行时长）、结果汇总与查询
+- **四组后台 worker**：任务执行、消息路由、监控、超时巡检
 
-- **Agent execute 方法支持 LLM / Mock 双模式**：当配置 `openai_api_key` 时使用真实 LLM 调用驱动审计逻辑；未配置时自动回退到示例数据（mock fallback）
-- **无工具层**：README 声称的文档解析器、OCR、规则引擎、搜索工具均未实现
-- **无 Prompt 模板**：声称的 YAML Prompt 模板未实现
+### Agent 与流水线
+
+- **5 个 Agent 实现**，全部接入 `LLMClient`（真实 LLM 优先，mock 兜底）：
+  - `DocumentParser` — 资料收集与要素抽取
+  - `ComplianceChecker` — 合规检查
+  - `RiskIdentifier` — 风险识别
+  - `ReportWriter` — 报告编写（LLM 增强建议生成）
+  - `QualityCoordinator` — 质量复核 + 任务协调
+- **三种审计流水线**（`workflows/audit_pipeline.py`）：信贷审计 / 合规审计 / 财务审计，
+  由 `WorkflowExecutor` 按步骤执行、聚合 findings 并抽取最终报告，`AuditPipeline` 统一管理模板
+
+### 支撑能力
+
+- **LLM 客户端**（`utils/llm_client.py`）：基于 `AsyncOpenAI` 的 `chat` / `chat_json`（JSON 模式），
+  请求级缓存，`call_with_fallback` 在调用失败时无缝切回 mock；`is_mock_mode` 可查询当前模式
+- **安全工具**（`utils/security.py`）：输入校验（查询/文档引用/报告标题的注入模式检测）、
+  数据脱敏（账号 / 身份证 / 手机号）、API Key 常量时间比较校验、审计日志落盘、审计中间件工厂
+- **Streamlit Dashboard**（`ui/dashboard.py`）：审计流程与结果的可视化界面
+- **配置管理**（`config/settings.py`）：Pydantic Settings，支持 `.env`
+- **结构化日志**（`utils/logger.py`）+ `verify.py` 一键自检脚本
+
+## 未实现（TODO）
+
+- **无工具层**：文档解析器、OCR、规则引擎、外部检索等工具调用尚未实现（`BaseAgent.get_tools()` 为空接口）
+- **无 Prompt 模板文件**：各 Agent 的 Prompt 内联在代码中，未抽取为 YAML 模板
 - **无审计规则库**：声称的 200+ 监管规则未实现
-- **测试覆盖有限**：仅 base_agent 和 orchestrator 的单元测试
+- **记忆系统空缺**：`memory/` 仅有 `__init__.py`，长期记忆 / 向量记忆未落地
+- **可观测性未接线**：Redis 缓存、Prometheus 指标导出、OpenTelemetry 链路追踪仅声明依赖
+- **测试覆盖有限**：仅 `base_agent` 与 `orchestrator` 的单元测试，Agent 与工作流无测试
 
 ---
 
@@ -43,35 +67,33 @@ bank-audit-agents/
 ├── verify.py                   # 验证脚本
 │
 ├── bank_audit_agents/          # 核心代码
-│   ├── __init__.py
-│   ├── core/                   # 核心层
+│   ├── core/
 │   │   ├── base_agent.py       # BaseAgent 抽象基类
 │   │   └── orchestrator.py     # 多智能体编排器
-│   ├── agents/                 # Agent 实现
-│   │   ├── document_parser.py       # 资料收集 Agent（LLM 驱动，mock fallback）
-│   │   ├── compliance_checker.py    # 合规检查 Agent（LLM 驱动，mock fallback）
-│   │   ├── risk_identifier.py       # 风险识别 Agent（LLM 驱动，mock fallback）
-│   │   ├── report_writer.py         # 报告编写 Agent（LLM 增强建议生成）
-│   │   └── quality_and_coordinator.py # 质量复核 + 任务协调 Agent（LLM 驱动质量检查）
-│   ├── workflows/              # 工作流
+│   ├── agents/
+│   │   ├── document_parser.py        # 资料收集（LLM 驱动，mock fallback）
+│   │   ├── compliance_checker.py     # 合规检查（LLM 驱动，mock fallback）
+│   │   ├── risk_identifier.py        # 风险识别（LLM 驱动，mock fallback）
+│   │   ├── report_writer.py          # 报告编写（LLM 驱动，mock fallback）
+│   │   └── quality_and_coordinator.py# 质量复核 + 任务协调
+│   ├── workflows/
 │   │   └── audit_pipeline.py   # 审计流水线（信贷/合规/财务）
-│   ├── config/                 # 配置
+│   ├── config/
 │   │   └── settings.py         # Pydantic Settings
-│   ├── memory/                 # 记忆系统（仅 __init__.py）
-│   ├── ui/                     # 前端界面
+│   ├── memory/                 # 记忆系统（TODO）
+│   ├── ui/
 │   │   └── dashboard.py        # Streamlit Dashboard
-│   └── utils/                  # 工具函数
-│       ├── logger.py           # 日志
-│       ├── security.py         # 安全工具（CORS/认证/审计日志/数据脱敏）
-│       └── llm_client.py       # LLM 客户端（OpenAI 驱动，mock fallback）
+│   └── utils/
+│       ├── logger.py           # 结构化日志
+│       ├── security.py         # 输入校验 / 数据脱敏 / 鉴权 / 审计日志
+│       └── llm_client.py       # LLM 客户端（真实 API + mock fallback）
 │
 ├── docker/                     # Docker 配置
-│   └── Dockerfile
-├── examples/                   # 示例代码
+├── examples/
 │   ├── 01_single_agent.py
 │   ├── 02_orchestrator.py
 │   └── 03_credit_audit_workflow.py
-└── tests/                      # 测试
+└── tests/
     ├── test_base_agent.py
     └── test_orchestrator.py
 ```
@@ -82,25 +104,46 @@ bank-audit-agents/
 
 ```bash
 cd 03-banking-audit-suite/bank-audit-agents
-pip install -e .
-
-# 配置环境变量
-cp .env.example .env
-# 编辑 .env，填入 OPENAI_API_KEY
+poetry install          # 或 pip install -e .
+cp .env.example .env    # 可选：填入 OPENAI_API_KEY 切换到真实 LLM
+python examples/01_single_agent.py
+python verify.py        # 自检：不配 Key 也能跑通（mock 模式）
 ```
+
+不配置 API Key 时所有 Agent 自动以 mock 模式运行，便于先验证编排与流水线是否通畅。
+
+---
+
+## 🔗 相关项目
+
+本仓库解决「**多个 Agent 怎么分工协作跑完一整套审计流程**」。
+
+如果你关心「审计知识怎么被准确检索和引用」，推荐作者的另一个开源项目：
+
+> ### 🔍 [银行审计 RAG 系统（audit-rag）](https://github.com/luckysun001/audit-rag)
+> 向量库 + Embedding + RAG 引擎，把法规与合同原文检索出来再交给模型作答。
+
+| | 本仓库（bank-audit-agents） | audit-rag |
+|---|---|---|
+| **核心问题** | 审计任务的多角色协同 | 审计知识检索与引用 |
+| **关键组件** | BaseAgent、Orchestrator、流水线 | 向量库、Embedding、RAG 引擎 |
+| **典型用法** | 拆解审计项目 → 分派 Agent → 汇总报告 | 提问 → 检索法规/合同 → 生成结论 |
+
+想系统学习背后的原理，另见 [AI-Learning-Playground](https://github.com/luckysun001/AI-Learning-Playground)。
 
 ---
 
 ## 技术栈
 
-- Python 3.11+
-- LangChain / LangGraph（Agent 编排，TODO 集成）
-- FastAPI（API 框架）
+- Python 3.11+（3.10 已 EOL，且 chromadb 依赖的 onnxruntime 自 1.24.4 起不再发布 cp310 轮子）
+- asyncio（编排与并发，自研实现，未依赖第三方编排框架）
+- OpenAI Python SDK（AsyncOpenAI，LLM 调用）
+- Pydantic v2 / pydantic-settings（配置与数据模型）
 - Streamlit（Dashboard）
-- Pydantic v2（配置管理）
 - structlog（日志）
-- Redis（缓存，TODO）
-- Prometheus / OpenTelemetry（监控，TODO）
+
+> 说明：`pyproject.toml` 中声明的 LangChain / LangGraph / ChromaDB 属于规划中的可选依赖，
+> 当前代码并未直接引用，编排层为自研 asyncio 实现。
 
 ---
 
