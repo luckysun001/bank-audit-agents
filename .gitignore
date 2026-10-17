@@ -27,7 +27,8 @@ pip-delete-this-directory.txt
 # ==========================================
 # Poetry
 # ==========================================
-poetry.lock
+# 说明：本项目是带 API / UI / Docker 的应用型项目，poetry.lock 需要提交以保证
+# 依赖可复现（CI 与镜像构建使用同一份解析结果）。库项目才应忽略 lock。
 .venv/
 venv/
 

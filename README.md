@@ -134,13 +134,18 @@ bank-audit-agents/
 
 ```bash
 cd 03-banking-audit-suite/bank-audit-agents
-poetry install          # 或 pip install -e .
+poetry install          # 按 poetry.lock 安装（如需重新解析用 poetry lock）
 cp .env.example .env    # 可选：填入 OPENAI_API_KEY 切换到真实 LLM
 python examples/01_single_agent.py
 python verify.py        # 自检：不配 Key 也能跑通（mock 模式）
 ```
 
 不配置 API Key 时所有 Agent 自动以 mock 模式运行，便于先验证编排与流水线是否通畅。
+
+> **依赖锁定**：本项目是带 API / UI / Docker 镜像的应用型项目，因此**提交 `poetry.lock`**。
+> lock 由 Poetry 2.x 生成（`lock-version 2.1`）；Dockerfile 已同步固定 `poetry==2.*`
+> 并改用 `--without dev`（Poetry 2.x 移除了 `--no-dev`）。
+> 改动依赖约束后请一并执行 `poetry lock` 并提交。
 
 ---
 

@@ -15,17 +15,19 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装 Poetry
-RUN pip install --no-cache-dir poetry
+# 固定大版本：一是与 poetry.lock 的 lock-version 匹配（2.x 产出的 lock 无法被 1.x 读取），
+# 二是 poetry 2.x 已移除 --no-dev，写法要同步改为 --without dev
+RUN pip install --no-cache-dir "poetry==2.*"
 
 # 配置 Poetry
 RUN poetry config virtualenvs.create false
 
-# 复制项目文件
-COPY pyproject.toml ./
+# 复制项目文件（连同 lock，保证镜像构建可复现）
+COPY pyproject.toml poetry.lock ./
 COPY bank_audit_agents/ ./bank_audit_agents/
 
 # 安装依赖
-RUN poetry install --no-root --no-dev
+RUN poetry install --no-root --without dev
 
 # 创建数据目录
 RUN mkdir -p /app/data/vector_store \
