@@ -175,11 +175,13 @@ class AgentOrchestrator:
             QualityAuditorAgent,
             TaskCoordinatorAgent,
         )
+        from bank_audit_agents.agents.report_writer import ReportWriterAgent
 
         default_agents = [
             DocumentParserAgent(),
             RiskIdentifierAgent(),
             ComplianceCheckerAgent(),
+            ReportWriterAgent(),   # 信贷/合规工作流的 report_generation 步骤依赖它
             QualityAuditorAgent(),
             TaskCoordinatorAgent(),
         ]

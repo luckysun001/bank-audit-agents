@@ -4,6 +4,7 @@
 - :mod:`base`           工具抽象与注册表
 - :mod:`rules`          审计规则引擎（内置常用监管指标规则）
 - :mod:`document_tools` 文档结构化抽取（金额 / 比率 / 日期 / 主体 / 条款）
+- :mod:`document_loader` 文档加载与 OCR（PDF/Word/Excel/图片 -> 纯文本）
 """
 
 from bank_audit_agents.tools.base import (
@@ -22,6 +23,16 @@ from bank_audit_agents.tools.rules import (
     RuleFinding,
     RuleSeverity,
     build_default_engine,
+)
+from bank_audit_agents.tools.document_loader import (
+    MissingDependencyError,
+    ExtractedDocument,
+    SUPPORTED_EXTENSIONS,
+    extract_document_text,
+    load_document_text,
+    ocr_image,
+    ocr_pdf,
+    supported_formats,
 )
 from bank_audit_agents.tools.document_tools import (
     extract_amounts,
@@ -55,4 +66,13 @@ __all__ = [
     "extract_parties",
     "split_sections",
     "summarize_document",
+    # 文档加载与 OCR
+    "ExtractedDocument",
+    "MissingDependencyError",
+    "SUPPORTED_EXTENSIONS",
+    "extract_document_text",
+    "load_document_text",
+    "ocr_image",
+    "ocr_pdf",
+    "supported_formats",
 ]

@@ -430,12 +430,16 @@ class WorkflowExecutor:
         # 判断是否成功
         is_success = task.task_id in all_results["completed"]
 
+        # Task.to_dict() 的键是 output_data；这里兼容旧的 "output" 写法，
+        # 保证无论上游是哪一版都能取到步骤产出
+        output = task_result.get("output_data") or task_result.get("output") or {}
+
         return {
             "success": is_success,
             "step_id": step.step_id,
             "task_id": task.task_id,
-            "output": task_result.get("output", {}),
-            "error": task_result.get("error"),
+            "output": output,
+            "error": task_result.get("error") or task_result.get("error_message"),
         }
 
     def _prepare_step_input(
@@ -454,12 +458,18 @@ class WorkflowExecutor:
                 source_step = parts[0]
                 source_key = ".".join(parts[1:])
 
-                if source_step in step_outputs:
-                    source_data = step_outputs[source_step]
-                    # 简单的键值获取（实际可以支持更复杂的路径解析）
-                    step_input[input_key] = source_data.get("output", {}).get(
-                        source_key, source_data.get(source_key)
-                    )
+                if source_step not in step_outputs:
+                    continue
+
+                source_data = step_outputs[source_step]
+                # 简单的键值获取（实际可以支持更复杂的路径解析）
+                value = source_data.get("output", {}).get(
+                    source_key, source_data.get(source_key)
+                )
+                # 上游没产出时不要用 None 覆盖 initial_input 里的同名值，
+                # 否则下游拿到的就是"有这个键但值为空"，反而更难排查
+                if value is not None:
+                    step_input[input_key] = value
 
         return step_input
 

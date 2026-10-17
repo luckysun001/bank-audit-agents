@@ -228,6 +228,11 @@ class Task:
             "priority": self.priority,
             "duration_seconds": self.duration_seconds,
             "error_message": self.error_message,
+            # output_data 必须带上：WorkflowExecutor 通过 get_results() 拿到的是
+            # task.to_dict()，跨步骤的 input_mapping 正是从这里的 output_data 取值。
+            # 漏掉它会使整条工作流的上下游数据传递静默失效。
+            "output_data": self.output_data,
+            "metadata": self.metadata,
         }
 
     def validate(self) -> Tuple[bool, List[str]]:

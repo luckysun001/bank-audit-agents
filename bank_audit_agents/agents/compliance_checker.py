@@ -137,6 +137,13 @@ class ComplianceCheckerAgent(BaseAgent):
             findings=compliance_results,
             recommendations=rectification_suggestions,
             confidence_score=compliance_score,
+            # 工作流 report_generation 步骤映射 compliance_check.findings
+            output_data={
+                "findings": compliance_results,
+                "compliance_results": compliance_results,
+                "compliance_score": compliance_score,
+                "violation_count": compliance_report["violation_count"],
+            },
             metadata={
                 "business_type": business_type,
                 "check_frameworks": check_frameworks,

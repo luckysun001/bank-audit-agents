@@ -144,6 +144,12 @@ class RiskIdentifierAgent(BaseAgent):
             findings=rated_risks,
             recommendations=recommendations,
             confidence_score=self._calculate_confidence(rated_risks),
+            # 工作流 report_generation 步骤映射 risk_identification.findings
+            output_data={
+                "findings": rated_risks,
+                "risk_summary": risk_summary,
+                "risk_count": len(rated_risks),
+            },
             metadata={
                 "total_risks": len(rated_risks),
                 "critical_count": sum(1 for r in rated_risks if r["level"] == RiskLevel.CRITICAL),

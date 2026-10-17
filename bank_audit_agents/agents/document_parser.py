@@ -12,16 +12,15 @@ from bank_audit_agents.core.base_agent import (
     BaseAgent,
     Task,
 )
+from bank_audit_agents.tools.document_loader import (
+    SCANNED_PAGE_THRESHOLD,
+    MissingDependencyError,
+    extract_document_text,
+)
 from bank_audit_agents.utils.logger import get_logger
 from bank_audit_agents.utils.llm_client import get_llm_client
 
 logger = get_logger(__name__)
-
-
-def _read_text(path: str) -> str:
-    """同步读取文本文件内容（在线程池中执行，避免阻塞 asyncio 事件循环）。"""
-    with open(path, "r", encoding="utf-8") as f:
-        return f.read()
 
 
 class DocumentParserAgent(BaseAgent):
@@ -56,14 +55,13 @@ class DocumentParserAgent(BaseAgent):
 """
 
     def get_tools(self) -> List[Any]:
+        # 这里必须是已注册的工具名，否则 resolve_tools() 会跳过（并记一条告警）
         return [
-            # 实际项目中会接入真实的文档解析工具
-            "pdf_parser",
-            "docx_parser",
-            "excel_parser",
-            "text_extractor",
-            "table_extractor",
-            "entity_recognizer",
+            "extract_document_text",  # PDF / Word / Excel / 图片 -> 纯文本（扫描件自动 OCR）
+            "summarize_document",     # 金额 / 比率 / 日期 / 主体 / 条款综合抽取
+            "extract_amounts",
+            "extract_dates",
+            "extract_parties",
         ]
 
     async def execute(self, task: Task) -> AgentResult:
@@ -84,7 +82,7 @@ class DocumentParserAgent(BaseAgent):
             )
 
         # 解析文档内容（LLM 驱动，mock 模式下回退到示例数据）
-        findings = await self._parse_document(
+        findings, extraction, document_text = await self._parse_document(
             document_path, document_type, extraction_requirements
         )
 
@@ -105,28 +103,66 @@ class DocumentParserAgent(BaseAgent):
                 "建议对重要合同条款进行人工复核",
             ],
             confidence_score=0.85,
+            # parsed_content 是工作流 input_mapping 的数据源
+            # （risk_identification / compliance_check 都映射 document_parsing.parsed_content），
+            # 缺失会导致下游步骤拿到空内容而整条流水线失败
+            output_data={
+                "parsed_content": document_text,
+                "findings": findings,
+                "key_information": key_info,
+                "document_type": key_info.get("document_type", "unknown"),
+            },
             metadata={
                 "document_path": document_path,
                 "document_type": key_info.get("document_type", "unknown"),
                 "extracted_fields": len(key_info),
                 "total_findings": len(findings),
+                "extraction": extraction,
             },
         )
 
+    async def _load_document(self, document_path: str) -> tuple[str, Dict[str, Any]]:
+        """把文档读成文本，并返回提取过程信息（方式 / 页数 / 告警）。
+
+        返回 ``(文本, 提取信息)``。读取失败时文本退化为占位串，
+        但**原因会记录到 extraction["error"]**，避免"解析不出内容却查不到原因"。
+        """
+        try:
+            doc = await asyncio.to_thread(
+                extract_document_text, document_path, True, "chi_sim+eng",
+                SCANNED_PAGE_THRESHOLD, None, "utf-8",
+            )
+        except MissingDependencyError as exc:
+            logger.warning(f"文档加载缺少依赖: {exc}")
+            return f"[文档路径: {document_path}]", {
+                "source": document_path,
+                "method": "failed",
+                "error": str(exc),
+                "install_hint": exc.install_cmd,
+            }
+        except Exception as exc:
+            logger.warning(f"文档加载失败: {exc}")
+            return f"[文档路径: {document_path}]", {
+                "source": document_path,
+                "method": "failed",
+                "error": str(exc),
+            }
+
+        info = doc.to_dict()
+        # 截断后再交给 LLM，避免超出上下文窗口；原文长度在 info 中保留
+        return doc.text[:4000], info
+
     async def _parse_document(
         self, document_path: str, document_type: str, requirements: List[str]
-    ) -> List[Dict[str, Any]]:
+    ) -> tuple[List[Dict[str, Any]], Dict[str, Any], str]:
         """
         解析文档内容
         - LLM 模式：将文档内容发送给 LLM 进行结构化信息提取
         - Mock 模式：返回示例解析结果
         """
-        # 尝试读取文档内容（如果路径是文本文件）
-        document_text = ""
-        try:
-            document_text = (await asyncio.to_thread(_read_text, document_path))[:4000]
-        except Exception:
-            document_text = f"[文档路径: {document_path}]"
+        # 读取文档内容：PDF / Word / Excel / 图片统一走 document_loader，
+        # 扫描件会自动转 OCR；失败原因要留在结果里，不能静默回退
+        document_text, extraction = await self._load_document(document_path)
 
         user_prompt = json.dumps({
             "document_path": document_path,
@@ -146,12 +182,12 @@ class DocumentParserAgent(BaseAgent):
         )
 
         if isinstance(result, dict) and "findings" in result:
-            return result["findings"]
+            return result["findings"], extraction, document_text
         elif isinstance(result, list):
-            return result
+            return result, extraction, document_text
         else:
             logger.warning("LLM 返回格式异常，使用 mock 数据")
-            return self._get_mock_findings()
+            return self._get_mock_findings(), extraction, document_text
 
     def _get_mock_findings(self) -> List[Dict[str, Any]]:
         """返回示例解析结果（mock fallback）"""

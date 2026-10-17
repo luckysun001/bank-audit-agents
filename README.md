@@ -47,6 +47,11 @@
     导出为 YAML/JSON。**阈值为参考值，落地请以最新监管文件与机构内部政策为准**
   - `tools/document_tools.py` — 文档结构化抽取：金额（元/万元/亿元自动换算到元）、百分比、
     日期归一化、当事主体（甲方/借款人/保证人…）、条款分段、综合摘要
+  - `tools/document_loader.py` — **文档加载与 OCR**：PDF / Word / Excel / 图片 / 文本 -> 纯文本。
+    PDF 优先取文本层，**判定为扫描件（平均每页字符数过少）时才转 OCR**；
+    OCR 后端支持 tesseract 与 PaddleOCR，缺失时抛 `MissingDependencyError` 并给出安装命令
+    （不静默返回空文本 —— 静默失败在审计场景里等于漏审）。
+    `DocumentParserAgent` 已真正接入该层，提取方式与告警会写入 `metadata["extraction"]`
 - **安全工具**（`utils/security.py`）：输入校验（查询/文档引用/报告标题的注入模式检测）、
   数据脱敏（账号 / 身份证 / 手机号）、API Key 常量时间比较校验、审计日志落盘、审计中间件工厂
 - **Streamlit Dashboard**（`ui/dashboard.py`）：审计流程与结果的可视化界面
@@ -55,13 +60,16 @@
 
 ## 未实现（TODO）
 
-- **工具层仍不完整**：已实现规则引擎与文档结构化抽取，但 **PDF/Word/扫描件的解析与 OCR 尚未接入**
-  （`tools/document_tools.py` 处理的是"已取到文本之后"的抽取），外部检索工具也未接入
+- **工具层仍不完整**：规则引擎、文档结构化抽取、文档加载与 OCR 已实现，
+  但 **OCR 依赖需自行安装**（`pip install pytesseract` + 系统 tesseract 二进制，或 `pip install paddleocr`），
+  扫描版 PDF 转图片还需 `pymupdf` 或 `pdf2image` + poppler；外部检索工具未接入
 - **无 Prompt 模板文件**：各 Agent 的 Prompt 内联在代码中，未抽取为 YAML 模板
 - **规则库规模有限**：内置 28 条常用监管指标，未覆盖此前声称的 200+ 条；规则可声明式扩展
 - **记忆系统空缺**：`memory/` 仅有 `__init__.py`，长期记忆 / 向量记忆未落地
 - **可观测性未接线**：Redis 缓存、Prometheus 指标导出、OpenTelemetry 链路追踪仅声明依赖
-- **测试覆盖有限**：已有 `base_agent`、`orchestrator`、工具层（`test_tools.py`）与规则引擎（`test_rules.py`）的单元测试，**5 个 Agent 与工作流仍无测试**
+- **测试覆盖**：已有 `base_agent`、`orchestrator`、工具层（`test_tools.py`）、规则引擎（`test_rules.py`）、
+  文档加载（`test_document_loader.py`）、5 类业务 Agent（`test_agents.py`，用 FakeLLM 注入）与
+  工作流端到端（`test_workflows.py`）共 **135 个用例**；Dashboard / 记忆系统等仍无测试
 
 ---
 
@@ -95,7 +103,8 @@ bank-audit-agents/
 │   ├── tools/                  # 工具层
 │   │   ├── base.py             # 工具抽象与注册表
 │   │   ├── rules.py            # 审计规则引擎（内置 28 条监管指标）
-│   │   └── document_tools.py   # 文档结构化抽取
+│   │   ├── document_tools.py   # 文档结构化抽取（金额/比率/日期/主体/条款）
+│   │   └── document_loader.py  # 文档加载与 OCR（PDF/Word/Excel/图片 -> 文本）
 │   ├── ui/
 │   │   └── dashboard.py        # Streamlit Dashboard
 │   └── utils/
@@ -109,8 +118,14 @@ bank-audit-agents/
 │   ├── 02_orchestrator.py
 │   └── 03_credit_audit_workflow.py
 └── tests/
+    ├── conftest.py             # FakeLLM 注入（不发真实请求）
     ├── test_base_agent.py
-    └── test_orchestrator.py
+    ├── test_orchestrator.py
+    ├── test_tools.py
+    ├── test_rules.py
+    ├── test_document_loader.py
+    ├── test_agents.py          # 5 类业务 Agent
+    └── test_workflows.py       # 工作流端到端
 ```
 
 ---

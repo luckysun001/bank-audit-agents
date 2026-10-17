@@ -188,3 +188,20 @@ def get_llm_client() -> LLMClient:
     if _llm_client is None:
         _llm_client = LLMClient()
     return _llm_client
+
+
+def set_llm_client(client: Optional[LLMClient]) -> None:
+    """替换全局 LLM 客户端（测试注入与运行时切换用）。
+
+    传 ``None`` 等价于 :func:`reset_llm_client`。
+
+    注意：各 Agent 在 ``__init__`` 时就取走了客户端引用，
+    因此**必须在创建 Agent 之前调用**才能对已有 Agent 生效。
+    """
+    global _llm_client
+    _llm_client = client
+
+
+def reset_llm_client() -> None:
+    """清空全局客户端，下次 :func:`get_llm_client` 会按当前配置重建"""
+    set_llm_client(None)
