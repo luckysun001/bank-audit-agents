@@ -18,6 +18,11 @@ from enum import Enum
 from dataclasses import dataclass, field, asdict
 
 from bank_audit_agents.config.settings import Settings, AgentType, get_settings
+from bank_audit_agents.tools.base import (
+    ToolResult,
+    ToolSpec,
+    get_default_registry,
+)
 from bank_audit_agents.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -345,10 +350,30 @@ class BaseAgent(ABC):
         """获取智能体的系统提示词"""
         pass
 
-    @abstractmethod
     def get_tools(self) -> List[Any]:
-        """获取智能体可用的工具列表"""
-        pass
+        """获取智能体可用的工具列表
+
+        默认返回默认工具注册表中的全部工具名；子类可覆盖以声明自己关心的工具。
+        想拿到真正可执行的工具对象，请用 :meth:`resolve_tools`。
+        """
+        return get_default_registry().names()
+
+    def resolve_tools(self) -> List[ToolSpec]:
+        """把 :meth:`get_tools` 返回的名称解析为可执行的工具对象
+
+        未注册的名称会被跳过（只记录 debug 日志），
+        这样"声明了工具但尚未实现"的情况不会让 Agent 崩溃。
+        """
+        names = [item for item in self.get_tools() if isinstance(item, str)]
+        return get_default_registry().resolve(names)
+
+    def call_tool(self, name: str, **kwargs) -> ToolResult:
+        """调用一个已注册的工具，统一返回 :class:`ToolResult`（工具不存在也不抛异常）"""
+        return get_default_registry().call(name, **kwargs)
+
+    def describe_tools(self) -> List[Dict[str, Any]]:
+        """返回本 Agent 可访问工具的结构化描述，便于拼装进 Prompt"""
+        return [spec.to_dict() for spec in self.resolve_tools()]
 
     @abstractmethod
     async def execute(self, task: Task) -> AgentResult:

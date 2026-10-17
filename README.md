@@ -37,6 +37,16 @@
 
 - **LLM 客户端**（`utils/llm_client.py`）：基于 `AsyncOpenAI` 的 `chat` / `chat_json`（JSON 模式），
   请求级缓存，`call_with_fallback` 在调用失败时无缝切回 mock；`is_mock_mode` 可查询当前模式
+- **工具层**（`tools/`）：此前各 Agent 的 `get_tools()` 只返回工具名字符串，现补上真正可执行的骨架
+  - `tools/base.py` — `ToolSpec` / `ToolResult` / `ToolRegistry` 与 `@tool` 装饰器；
+    `BaseAgent` 新增 `resolve_tools()`（把工具名解析为可执行对象）、`call_tool()`（统一返回 `ToolResult`，
+    工具不存在也不抛异常）、`describe_tools()`（供拼装 Prompt）
+  - `tools/rules.py` — **审计规则引擎**：规则为声明式描述（指标 + 运算符 + 阈值），
+    内置 28 条常用监管指标（大额风险暴露集中度、不良率、拨备覆盖率、资本充足率、LCR/NSFR、
+    反洗钱报送时限与资料保存、整改率等），支持按分类/严重级别过滤、`override_threshold()` 覆盖阈值、
+    导出为 YAML/JSON。**阈值为参考值，落地请以最新监管文件与机构内部政策为准**
+  - `tools/document_tools.py` — 文档结构化抽取：金额（元/万元/亿元自动换算到元）、百分比、
+    日期归一化、当事主体（甲方/借款人/保证人…）、条款分段、综合摘要
 - **安全工具**（`utils/security.py`）：输入校验（查询/文档引用/报告标题的注入模式检测）、
   数据脱敏（账号 / 身份证 / 手机号）、API Key 常量时间比较校验、审计日志落盘、审计中间件工厂
 - **Streamlit Dashboard**（`ui/dashboard.py`）：审计流程与结果的可视化界面
@@ -45,12 +55,13 @@
 
 ## 未实现（TODO）
 
-- **无工具层**：文档解析器、OCR、规则引擎、外部检索等工具调用尚未实现（`BaseAgent.get_tools()` 为空接口）
+- **工具层仍不完整**：已实现规则引擎与文档结构化抽取，但 **PDF/Word/扫描件的解析与 OCR 尚未接入**
+  （`tools/document_tools.py` 处理的是"已取到文本之后"的抽取），外部检索工具也未接入
 - **无 Prompt 模板文件**：各 Agent 的 Prompt 内联在代码中，未抽取为 YAML 模板
-- **无审计规则库**：声称的 200+ 监管规则未实现
+- **规则库规模有限**：内置 28 条常用监管指标，未覆盖此前声称的 200+ 条；规则可声明式扩展
 - **记忆系统空缺**：`memory/` 仅有 `__init__.py`，长期记忆 / 向量记忆未落地
 - **可观测性未接线**：Redis 缓存、Prometheus 指标导出、OpenTelemetry 链路追踪仅声明依赖
-- **测试覆盖有限**：仅 `base_agent` 与 `orchestrator` 的单元测试，Agent 与工作流无测试
+- **测试覆盖有限**：已有 `base_agent`、`orchestrator`、工具层（`test_tools.py`）与规则引擎（`test_rules.py`）的单元测试，**5 个 Agent 与工作流仍无测试**
 
 ---
 
@@ -81,6 +92,10 @@ bank-audit-agents/
 │   ├── config/
 │   │   └── settings.py         # Pydantic Settings
 │   ├── memory/                 # 记忆系统（TODO）
+│   ├── tools/                  # 工具层
+│   │   ├── base.py             # 工具抽象与注册表
+│   │   ├── rules.py            # 审计规则引擎（内置 28 条监管指标）
+│   │   └── document_tools.py   # 文档结构化抽取
 │   ├── ui/
 │   │   └── dashboard.py        # Streamlit Dashboard
 │   └── utils/
