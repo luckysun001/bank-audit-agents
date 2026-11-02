@@ -67,9 +67,9 @@
 - **规则库规模有限**：内置 28 条常用监管指标，未覆盖此前声称的 200+ 条；规则可声明式扩展
 - **记忆系统空缺**：`memory/` 仅有 `__init__.py`，长期记忆 / 向量记忆未落地
 - **可观测性未接线**：Redis 缓存、Prometheus 指标导出、OpenTelemetry 链路追踪仅声明依赖
-- **测试覆盖**：已有 `base_agent`、`orchestrator`、工具层（`test_tools.py`）、规则引擎（`test_rules.py`）、
-  文档加载（`test_document_loader.py`）、5 类业务 Agent（`test_agents.py`，用 FakeLLM 注入）与
-  工作流端到端（`test_workflows.py`）共 **135 个用例**；Dashboard / 记忆系统等仍无测试
+- **测试覆盖**：已有 `base_agent`、`orchestrator`、工具层、规则引擎、文档加载、5 类业务 Agent（FakeLLM 注入）、
+  工作流端到端，以及本轮补齐的安全/LLM 客户端/日志/配置共 **188 个用例**（覆盖率 74%）；
+  仅 Streamlit `dashboard.py` 与 `memory/` 仍无单元测试（前者需在 Streamlit 运行时内测试，纯 UI 层）
 
 ---
 
@@ -125,7 +125,11 @@ bank-audit-agents/
     ├── test_rules.py
     ├── test_document_loader.py
     ├── test_agents.py          # 5 类业务 Agent
-    └── test_workflows.py       # 工作流端到端
+    ├── test_workflows.py       # 工作流端到端
+    ├── test_security.py        # 输入校验 / 脱敏 / 鉴权 / 审计日志
+    ├── test_llm_client.py      # LLM 客户端（mock 模式 / 缓存 / 重试 / 单例）
+    ├── test_logger.py          # 结构化日志与上下文注入
+    └── test_settings.py        # 配置默认值 / 环境判定 / 智能体配置
 ```
 
 ---
