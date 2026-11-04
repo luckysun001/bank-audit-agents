@@ -186,6 +186,28 @@ python verify.py        # 自检：不配 Key 也能跑通（mock 模式）
 
 ---
 
+## 🧪 测试与持续集成 (CI)
+
+仓库现含 **188 个用例**（覆盖率 74%），覆盖 base_agent、orchestrator、工具层、规则引擎、文档加载、5 类业务 Agent（FakeLLM 注入）、工作流端到端，以及安全 / LLM 客户端 / 日志 / 配置；仅 Streamlit `dashboard.py` 与 `memory/` 暂无单元测试。
+
+所有改动都经过 GitHub Actions 自动验证（`.github/workflows/ci.yml`）：
+
+- **触发条件**：`push` 与 `pull_request` 均覆盖 `main` 与 `dev` 分支
+- **运行环境**：Ubuntu，Python 3.11 / 3.12 双版本矩阵（`fail-fast: false`）
+- **验证内容**：`poetry install --with dev` 后运行 `poetry run pytest`
+
+本地复现 CI 的等价命令：
+
+```bash
+poetry install --with dev
+poetry run pytest -v
+python verify.py          # 一键自检（不配 Key 也能跑通 mock 模式）
+```
+
+> **依赖可复现性**：本项目提交 `poetry.lock`，CI 与本地均按 lock 安装；改动依赖约束后请一并 `poetry lock` 并提交，详见上方『快速开始』的依赖锁定说明。
+
+---
+
 ## 许可证
 
 MIT
