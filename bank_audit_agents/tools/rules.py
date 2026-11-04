@@ -14,11 +14,11 @@
     数字表示，如 12.5 表示 12.5%）；缺失的指标会被记入 ``missing_metrics`` 而非误报。
 """
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
 from enum import Enum
 from typing import Any, Dict, Iterable, List, Optional
 
-from bank_audit_agents.tools.base import ToolSpec, get_default_registry, tool
+from bank_audit_agents.tools.base import tool
 from bank_audit_agents.utils.logger import get_logger
 
 logger = get_logger(__name__)

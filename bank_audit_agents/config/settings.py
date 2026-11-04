@@ -2,8 +2,8 @@
 银行审计多智能体系统配置
 """
 from enum import Enum
-from typing import List, Optional, Dict, Any
-from pydantic import Field, field_validator
+from typing import List, Optional
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 

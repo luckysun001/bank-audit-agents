@@ -3,15 +3,13 @@
 基于 Streamlit 的交互式 Web UI
 """
 import asyncio
-import sys
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict
 import json
 
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 
 from bank_audit_agents.core.orchestrator import AgentOrchestrator
 from bank_audit_agents.workflows.audit_pipeline import AuditPipeline
@@ -77,7 +75,7 @@ def render_sidebar():
         # 系统状态
         if st.session_state.pipeline_initialized:
             status = st.session_state.orchestrator.get_status()
-            st.success(f"🟢 系统运行中")
+            st.success("🟢 系统运行中")
             st.info(f"🤖 智能体数量: {status['agents_count']}")
             st.info(f"📋 活跃任务: {status['active_tasks']}")
             st.info(f"✅ 已完成任务: {status['completed_tasks']}")

@@ -13,9 +13,9 @@ import uuid
 import time
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Callable, Union, Tuple
+from typing import Any, Dict, List, Optional, Callable, Tuple
 from enum import Enum
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 
 from bank_audit_agents.config.settings import Settings, AgentType, get_settings
 from bank_audit_agents.tools.base import (

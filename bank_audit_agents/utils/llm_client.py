@@ -5,7 +5,7 @@ LLM 客户端模块
 import json
 import asyncio
 import hashlib
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from bank_audit_agents.config.settings import get_settings
 from bank_audit_agents.utils.logger import get_logger

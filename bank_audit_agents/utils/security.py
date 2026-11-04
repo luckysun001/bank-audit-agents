@@ -4,9 +4,8 @@
 用于银行审计多智能体平台的安全加固。
 """
 import re
-import hashlib
 import logging
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum

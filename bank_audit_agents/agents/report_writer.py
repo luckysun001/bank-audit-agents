@@ -11,7 +11,7 @@
 
 import json
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 
 from bank_audit_agents.core.base_agent import (

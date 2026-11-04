@@ -2,16 +2,13 @@
 审计工作流编排系统
 定义和执行各种标准化的审计工作流程
 """
-import asyncio
-import json
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field, asdict
 
-from bank_audit_agents.core.base_agent import Task, TaskStatus
+from bank_audit_agents.core.base_agent import Task
 from bank_audit_agents.core.orchestrator import AgentOrchestrator
-from bank_audit_agents.config.settings import WorkflowType
 from bank_audit_agents.utils.logger import get_logger
 
 logger = get_logger(__name__)
