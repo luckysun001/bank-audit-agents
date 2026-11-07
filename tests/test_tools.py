@@ -17,7 +17,6 @@ from bank_audit_agents.tools import (
     summarize_document,
 )
 
-
 # ---------------- ToolRegistry ----------------
 
 

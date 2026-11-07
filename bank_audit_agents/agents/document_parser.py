@@ -2,23 +2,19 @@
 文档解析智能体
 负责解析和理解各类审计文档，提取关键信息
 """
+
 import asyncio
 import json
 from typing import Any, Dict, List, Optional
 
-from bank_audit_agents.core.base_agent import (
-    AgentResult,
-    AgentType,
-    BaseAgent,
-    Task,
-)
+from bank_audit_agents.core.base_agent import AgentResult, AgentType, BaseAgent, Task
 from bank_audit_agents.tools.document_loader import (
     SCANNED_PAGE_THRESHOLD,
     MissingDependencyError,
     extract_document_text,
 )
-from bank_audit_agents.utils.logger import get_logger
 from bank_audit_agents.utils.llm_client import get_llm_client
+from bank_audit_agents.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -58,7 +54,7 @@ class DocumentParserAgent(BaseAgent):
         # 这里必须是已注册的工具名，否则 resolve_tools() 会跳过（并记一条告警）
         return [
             "extract_document_text",  # PDF / Word / Excel / 图片 -> 纯文本（扫描件自动 OCR）
-            "summarize_document",     # 金额 / 比率 / 日期 / 主体 / 条款综合抽取
+            "summarize_document",  # 金额 / 比率 / 日期 / 主体 / 条款综合抽取
             "extract_amounts",
             "extract_dates",
             "extract_parties",
@@ -129,8 +125,13 @@ class DocumentParserAgent(BaseAgent):
         """
         try:
             doc = await asyncio.to_thread(
-                extract_document_text, document_path, True, "chi_sim+eng",
-                SCANNED_PAGE_THRESHOLD, None, "utf-8",
+                extract_document_text,
+                document_path,
+                True,
+                "chi_sim+eng",
+                SCANNED_PAGE_THRESHOLD,
+                None,
+                "utf-8",
             )
         except MissingDependencyError as exc:
             logger.warning(f"文档加载缺少依赖: {exc}")
@@ -164,18 +165,22 @@ class DocumentParserAgent(BaseAgent):
         # 扫描件会自动转 OCR；失败原因要留在结果里，不能静默回退
         document_text, extraction = await self._load_document(document_path)
 
-        user_prompt = json.dumps({
-            "document_path": document_path,
-            "document_type": document_type,
-            "extraction_requirements": requirements,
-            "document_text": document_text,
-        }, ensure_ascii=False)
+        user_prompt = json.dumps(
+            {
+                "document_path": document_path,
+                "document_type": document_type,
+                "extraction_requirements": requirements,
+                "document_text": document_text,
+            },
+            ensure_ascii=False,
+        )
 
         def _mock_fallback():
             return self._get_mock_findings()
 
         result = await self._llm.call_with_fallback(
-            system_prompt=self.get_system_prompt() + "\n\n请以 JSON 格式返回结果，包含一个 'findings' 数组，每个元素包含字段：field, value, value_type(currency/period/rate/entity/text), confidence(0-1), location。",
+            system_prompt=self.get_system_prompt()
+            + "\n\n请以 JSON 格式返回结果，包含一个 'findings' 数组，每个元素包含字段：field, value, value_type(currency/period/rate/entity/text), confidence(0-1), location。",
             user_prompt=user_prompt,
             fallback_fn=_mock_fallback,
             response_format_json=True,

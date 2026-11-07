@@ -42,9 +42,17 @@ async def test_document_parser_reads_text_file(fake_llm, tmp_path):
     doc = tmp_path / "contract.txt"
     doc.write_text("借款金额：人民币 500 万元。借款人：某某科技有限公司。", encoding="utf-8")
 
-    fake_llm.result = {"findings": [{"field": "loan_amount", "value": "5000000",
-                                     "value_type": "currency", "confidence": 0.9,
-                                     "location": "第1段"}]}
+    fake_llm.result = {
+        "findings": [
+            {
+                "field": "loan_amount",
+                "value": "5000000",
+                "value_type": "currency",
+                "confidence": 0.9,
+                "location": "第1段",
+            }
+        ]
+    }
 
     agent = DocumentParserAgent()
     result = await agent.execute(make_task(document_path=str(doc)))
@@ -109,10 +117,20 @@ async def test_risk_identifier_requires_content(fake_llm):
 async def test_risk_identifier_counts_levels(fake_llm):
     fake_llm.result = {
         "risks": [
-            {"risk_id": "R1", "description": "集中度超标", "category": "credit",
-             "level": "high", "likelihood": 0.8},
-            {"risk_id": "R2", "description": "资料缺失", "category": "aml",
-             "level": "low", "likelihood": 0.2},
+            {
+                "risk_id": "R1",
+                "description": "集中度超标",
+                "category": "credit",
+                "level": "high",
+                "likelihood": 0.8,
+            },
+            {
+                "risk_id": "R2",
+                "description": "资料缺失",
+                "category": "aml",
+                "level": "low",
+                "likelihood": 0.2,
+            },
             {"risk_id": "R3", "description": "未评级", "category": "other"},
         ]
     }
@@ -154,15 +172,19 @@ async def test_compliance_checker_requires_content(fake_llm):
 async def test_compliance_checker_returns_violations(fake_llm):
     fake_llm.result = {
         "violations": [
-            {"violation_id": "V1", "category": "信贷", "framework": "流动资金贷款管理办法",
-             "article": "第九条", "description": "未核实用途", "severity": "较重"},
+            {
+                "violation_id": "V1",
+                "category": "信贷",
+                "framework": "流动资金贷款管理办法",
+                "article": "第九条",
+                "description": "未核实用途",
+                "severity": "较重",
+            },
         ]
     }
 
     agent = ComplianceCheckerAgent()
-    result = await agent.execute(
-        make_task(audit_content="贷款用途未核实", business_type="credit")
-    )
+    result = await agent.execute(make_task(audit_content="贷款用途未核实", business_type="credit"))
 
     assert result.success is True
     assert len(result.findings) == 1
@@ -190,10 +212,18 @@ async def test_report_writer_generates_markdown(fake_llm):
     result = await agent.execute(
         make_task(
             findings=[
-                {"category": "信贷管理", "risk_level": "high", "title": "集中度超标",
-                 "description": "单一客户集中度超过监管上限"},
-                {"category": "反洗钱", "risk_level": "medium", "title": "资料不全",
-                 "description": "客户身份资料缺失"},
+                {
+                    "category": "信贷管理",
+                    "risk_level": "high",
+                    "title": "集中度超标",
+                    "description": "单一客户集中度超过监管上限",
+                },
+                {
+                    "category": "反洗钱",
+                    "risk_level": "medium",
+                    "title": "资料不全",
+                    "description": "客户身份资料缺失",
+                },
             ],
             audit_context={"audited_entity": "某分行"},
         )
@@ -234,8 +264,15 @@ async def test_report_writer_reports_failure_instead_of_raising(fake_llm):
 async def test_quality_auditor_uses_llm_scores(fake_llm):
     fake_llm.result = {
         "scores": {"accuracy": 92.0, "completeness": 60.0},
-        "issues": [{"issue_id": "Q1", "level": "major", "category": "完整性",
-                    "description": "缺少证据", "suggestion": "补充底稿"}],
+        "issues": [
+            {
+                "issue_id": "Q1",
+                "level": "major",
+                "category": "完整性",
+                "description": "缺少证据",
+                "suggestion": "补充底稿",
+            }
+        ],
     }
 
     agent = QualityAuditorAgent()
@@ -256,7 +293,11 @@ async def test_quality_auditor_rule_based_fallback(fake_llm):
 
     assert result.success is True
     assert set(result.output_data["detailed_scores"]) == {
-        "completeness", "accuracy", "consistency", "clarity", "compliance"
+        "completeness",
+        "accuracy",
+        "consistency",
+        "clarity",
+        "compliance",
     }
     # 只校验分数区间，不断言是否达标：规则打分与文本内容/环境相关，
     # 写死 pass_threshold 会让测试在不同 Python 版本下随机失败
@@ -283,7 +324,5 @@ async def test_task_coordinator_decomposes_project(fake_llm):
 @pytest.mark.parametrize("workflow_type", ["credit_audit", "compliance_audit", "financial_audit"])
 async def test_task_coordinator_handles_all_workflows(fake_llm, workflow_type):
     agent = TaskCoordinatorAgent()
-    result = await agent.execute(
-        make_task(project_requirements={"workflow_type": workflow_type})
-    )
+    result = await agent.execute(make_task(project_requirements={"workflow_type": workflow_type}))
     assert result.success is True

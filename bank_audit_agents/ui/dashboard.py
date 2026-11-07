@@ -2,18 +2,19 @@
 多智能体系统监控仪表板
 基于 Streamlit 的交互式 Web UI
 """
+
 import asyncio
+import json
 from datetime import datetime
 from typing import Dict
-import json
 
-import streamlit as st
 import pandas as pd
 import plotly.express as px
+import streamlit as st
 
 from bank_audit_agents.core.orchestrator import AgentOrchestrator
-from bank_audit_agents.workflows.audit_pipeline import AuditPipeline
 from bank_audit_agents.utils.logger import get_logger
+from bank_audit_agents.workflows.audit_pipeline import AuditPipeline
 
 logger = get_logger(__name__)
 
@@ -133,12 +134,14 @@ def render_overview():
     st.subheader("智能体状态")
     agents_data = []
     for agent_id, agent_info in status["agents"].items():
-        agents_data.append({
-            "智能体ID": agent_id[:20] + "...",
-            "类型": agent_info["type"],
-            "状态": agent_info["status"],
-            "已执行任务": agent_info["tasks_executed"],
-        })
+        agents_data.append(
+            {
+                "智能体ID": agent_id[:20] + "...",
+                "类型": agent_info["type"],
+                "状态": agent_info["status"],
+                "已执行任务": agent_info["tasks_executed"],
+            }
+        )
 
     if agents_data:
         df_agents = pd.DataFrame(agents_data)
@@ -301,7 +304,6 @@ def render_task_monitoring():
         st.info("请先在侧边栏启动系统")
         return
 
-    status = st.session_state.orchestrator.get_status()
     results = st.session_state.orchestrator.get_results()
 
     # 任务筛选
@@ -324,6 +326,7 @@ def render_task_monitoring():
     if st.checkbox("启用自动刷新"):
         st.empty()
         import time
+
         time.sleep(refresh_interval)
         st.rerun()
 
@@ -337,24 +340,28 @@ def render_task_monitoring():
 
         # 活跃任务
         for task_id, task_info in results["pending"].items():
-            all_tasks.append({
-                "任务ID": task_id[:25] + "...",
-                "完整ID": task_id,
-                "类型": task_info.get("task_type", "unknown"),
-                "状态": task_info.get("status", "pending"),
-                "描述": task_info.get("description", ""),
-            })
+            all_tasks.append(
+                {
+                    "任务ID": task_id[:25] + "...",
+                    "完整ID": task_id,
+                    "类型": task_info.get("task_type", "unknown"),
+                    "状态": task_info.get("status", "pending"),
+                    "描述": task_info.get("description", ""),
+                }
+            )
 
         # 已完成任务
         for task_id, task_info in results["completed"].items():
-            all_tasks.append({
-                "任务ID": task_id[:25] + "...",
-                "完整ID": task_id,
-                "类型": task_info.get("task_type", "unknown"),
-                "状态": "completed",
-                "描述": task_info.get("description", ""),
-                "耗时(秒)": task_info.get("duration_seconds", 0),
-            })
+            all_tasks.append(
+                {
+                    "任务ID": task_id[:25] + "...",
+                    "完整ID": task_id,
+                    "类型": task_info.get("task_type", "unknown"),
+                    "状态": "completed",
+                    "描述": task_info.get("description", ""),
+                    "耗时(秒)": task_info.get("duration_seconds", 0),
+                }
+            )
 
         if all_tasks:
             df_tasks = pd.DataFrame(all_tasks)
@@ -516,7 +523,9 @@ def render_audit_reports():
 
     # 报告列表
     for i, result in enumerate(reversed(st.session_state.workflow_results)):
-        with st.expander(f"📋 {result['workflow_name']} - {result['workflow_id']}", expanded=i == 0):
+        with st.expander(
+            f"📋 {result['workflow_name']} - {result['workflow_id']}", expanded=i == 0
+        ):
             st.subheader("审计摘要")
             st.success(result["summary"])
 
@@ -546,14 +555,24 @@ def render_audit_reports():
             st.subheader("主要风险点")
 
             risk_findings = [
-                {"类别": "信贷风险", "描述": "发现借新还旧迹象，贷款可能存在隐性不良风险", "等级": "高"},
-                {"类别": "担保风险", "描述": "抵押物评估价值偏高，抵押率实际超过监管要求", "等级": "中"},
+                {
+                    "类别": "信贷风险",
+                    "描述": "发现借新还旧迹象，贷款可能存在隐性不良风险",
+                    "等级": "高",
+                },
+                {
+                    "类别": "担保风险",
+                    "描述": "抵押物评估价值偏高，抵押率实际超过监管要求",
+                    "等级": "中",
+                },
                 {"类别": "合规风险", "描述": "贷款审批流程缺少关键审批人签字", "等级": "高"},
                 {"类别": "反洗钱", "描述": "客户KYC信息不完整，缺少实际控制人信息", "等级": "严重"},
             ]
 
             for finding in risk_findings:
-                level_emoji = {"严重": "🔴", "高": "🟠", "中": "🟡", "低": "🟢"}.get(finding["等级"], "")
+                level_emoji = {"严重": "🔴", "高": "🟠", "中": "🟡", "低": "🟢"}.get(
+                    finding["等级"], ""
+                )
                 st.markdown(
                     f"{level_emoji} **{finding['类别']}**: {finding['描述']} "
                     f"(风险等级: {finding['等级']})"

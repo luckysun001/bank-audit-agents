@@ -10,10 +10,13 @@
 """
 
 import asyncio
+from collections import deque
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Set, Tuple
-from collections import deque
 
+# 注意：智能体类在 register_default_agents 方法中动态导入
+# 以避免循环导入问题
+from bank_audit_agents.config.settings import AgentType, Settings, get_settings
 from bank_audit_agents.core.base_agent import (
     AgentMessage,
     AgentResult,
@@ -22,9 +25,6 @@ from bank_audit_agents.core.base_agent import (
     Task,
     TaskStatus,
 )
-# 注意：智能体类在 register_default_agents 方法中动态导入
-# 以避免循环导入问题
-from bank_audit_agents.config.settings import AgentType, Settings, get_settings
 from bank_audit_agents.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -32,6 +32,7 @@ logger = get_logger(__name__)
 
 class OrchestratorStatus(str):
     """协调器状态"""
+
     IDLE = "idle"
     RUNNING = "running"
     PAUSED = "paused"
@@ -102,7 +103,7 @@ class AgentOrchestrator:
 
         # 任务依赖管理
         self.task_dependencies: Dict[str, Set[str]] = {}  # task_id -> 依赖的 task_ids
-        self.task_dependents: Dict[str, Set[str]] = {}    # task_id -> 依赖它的 task_ids
+        self.task_dependents: Dict[str, Set[str]] = {}  # task_id -> 依赖它的 task_ids
 
         # 消息总线
         self.message_bus: asyncio.Queue[AgentMessage] = asyncio.Queue()
@@ -167,20 +168,20 @@ class AgentOrchestrator:
     def register_default_agents(self) -> None:
         """注册默认的审计智能体集合"""
         # 动态导入以避免循环依赖
-        from bank_audit_agents.agents.document_parser import DocumentParserAgent
-        from bank_audit_agents.agents.risk_identifier import RiskIdentifierAgent
         from bank_audit_agents.agents.compliance_checker import ComplianceCheckerAgent
+        from bank_audit_agents.agents.document_parser import DocumentParserAgent
         from bank_audit_agents.agents.quality_and_coordinator import (
             QualityAuditorAgent,
             TaskCoordinatorAgent,
         )
         from bank_audit_agents.agents.report_writer import ReportWriterAgent
+        from bank_audit_agents.agents.risk_identifier import RiskIdentifierAgent
 
         default_agents = [
             DocumentParserAgent(),
             RiskIdentifierAgent(),
             ComplianceCheckerAgent(),
-            ReportWriterAgent(),   # 信贷/合规工作流的 report_generation 步骤依赖它
+            ReportWriterAgent(),  # 信贷/合规工作流的 report_generation 步骤依赖它
             QualityAuditorAgent(),
             TaskCoordinatorAgent(),
         ]
@@ -688,9 +689,7 @@ class AgentOrchestrator:
         """等待所有任务完成"""
         start_time = asyncio.get_event_loop().time()
 
-        while self.is_running and (
-            self.task_queue.qsize() > 0 or len(self.active_tasks) > 0
-        ):
+        while self.is_running and (self.task_queue.qsize() > 0 or len(self.active_tasks) > 0):
             await asyncio.sleep(0.1)
 
             if timeout:
@@ -722,8 +721,7 @@ class AgentOrchestrator:
                 "by_status": agent_status_stats,
                 "by_type": {k: len(v) for k, v in self.agent_type_pool.items()},
                 "details": {
-                    agent_id: agent.get_status_info()
-                    for agent_id, agent in self.agents.items()
+                    agent_id: agent.get_status_info() for agent_id, agent in self.agents.items()
                 },
             },
             "tasks": {
@@ -747,13 +745,9 @@ class AgentOrchestrator:
                 for task_id, task in list(self.completed_tasks.items())[-100:]
             },
             "failed": {
-                task_id: task.to_dict()
-                for task_id, task in list(self.failed_tasks.items())[-100:]
+                task_id: task.to_dict() for task_id, task in list(self.failed_tasks.items())[-100:]
             },
-            "pending": {
-                task_id: task.to_dict()
-                for task_id, task in self.active_tasks.items()
-            },
+            "pending": {task_id: task.to_dict() for task_id, task in self.active_tasks.items()},
             "queue_size": self.task_queue.qsize(),
         }
 

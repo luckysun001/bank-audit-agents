@@ -4,11 +4,7 @@ import json
 import logging
 import sys
 
-from bank_audit_agents.utils.logger import (
-    JSONFormatter,
-    get_logger,
-    log_with_context,
-)
+from bank_audit_agents.utils.logger import JSONFormatter, get_logger, log_with_context
 
 
 def test_json_formatter_basic_fields():

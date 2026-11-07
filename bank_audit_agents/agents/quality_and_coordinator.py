@@ -10,24 +10,20 @@
 """
 
 import json
-from typing import Any, Dict, List, Optional, Tuple
-from dataclasses import dataclass
 from collections import defaultdict
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
 
-from bank_audit_agents.core.base_agent import (
-    AgentResult,
-    AgentType,
-    BaseAgent,
-    Task,
-)
-from bank_audit_agents.utils.logger import get_logger
+from bank_audit_agents.core.base_agent import AgentResult, AgentType, BaseAgent, Task
 from bank_audit_agents.utils.llm_client import get_llm_client
+from bank_audit_agents.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
 class QualityIssueLevel(str):
     """质量问题等级"""
+
     CRITICAL = "critical"
     MAJOR = "major"
     MINOR = "minor"
@@ -37,6 +33,7 @@ class QualityIssueLevel(str):
 @dataclass
 class QualityIssue:
     """质量问题"""
+
     issue_id: str
     level: str
     category: str
@@ -170,7 +167,9 @@ class QualityAuditorAgent(BaseAgent):
         # 生成建议
         recommendations = []
         for issue in issues:
-            suggestion = issue.suggestion if hasattr(issue, "suggestion") else issue.get("suggestion", "")
+            suggestion = (
+                issue.suggestion if hasattr(issue, "suggestion") else issue.get("suggestion", "")
+            )
             if suggestion:
                 recommendations.append(suggestion)
 
@@ -211,6 +210,7 @@ class QualityAuditorAgent(BaseAgent):
             for standard_key, config in QualityStandard.STANDARDS.items():
                 base_score = min(95, 70 + content_length / 100)
                 import random
+
                 random.seed(hash(str(content)) + hash(standard_key))
                 score = base_score + random.uniform(-5, 5)
                 score = max(60, min(100, score))
@@ -230,14 +230,18 @@ class QualityAuditorAgent(BaseAgent):
 
             return {"scores": scores, "issues": [i.to_dict() for i in issues]}
 
-        user_prompt = json.dumps({
-            "content": content_str,
-            "audit_type": audit_type,
-            "standards": standard_names,
-        }, ensure_ascii=False)
+        user_prompt = json.dumps(
+            {
+                "content": content_str,
+                "audit_type": audit_type,
+                "standards": standard_names,
+            },
+            ensure_ascii=False,
+        )
 
         result = await self._llm.call_with_fallback(
-            system_prompt=self.get_system_prompt() + "\n\n请以 JSON 格式返回结果，包含 'scores' 对象（key为标准key，value为分数0-100）和 'issues' 数组（每个元素含 issue_id, level, category, description, suggestion）。",
+            system_prompt=self.get_system_prompt()
+            + "\n\n请以 JSON 格式返回结果，包含 'scores' 对象（key为标准key，value为分数0-100）和 'issues' 数组（每个元素含 issue_id, level, category, description, suggestion）。",
             user_prompt=user_prompt,
             fallback_fn=_rule_based_fallback,
             response_format_json=True,
@@ -248,13 +252,15 @@ class QualityAuditorAgent(BaseAgent):
             raw_issues = result.get("issues", [])
             issues = []
             for raw in raw_issues:
-                issues.append(QualityIssue(
-                    issue_id=raw.get("issue_id", f"QI-{len(issues)}"),
-                    level=raw.get("level", QualityIssueLevel.MINOR),
-                    category=raw.get("category", "其他"),
-                    description=raw.get("description", ""),
-                    suggestion=raw.get("suggestion", ""),
-                ))
+                issues.append(
+                    QualityIssue(
+                        issue_id=raw.get("issue_id", f"QI-{len(issues)}"),
+                        level=raw.get("level", QualityIssueLevel.MINOR),
+                        category=raw.get("category", "其他"),
+                        description=raw.get("description", ""),
+                        suggestion=raw.get("suggestion", ""),
+                    )
+                )
             return scores, issues
         else:
             return _rule_based_fallback()["scores"], []
@@ -348,7 +354,8 @@ class QualityAuditorAgent(BaseAgent):
             "average_score": round(avg_score, 1),
             "pass_rate": round(
                 sum(1 for r in self.audit_history if r["quality_grade"] in ["A", "B", "C"])
-                / len(self.audit_history) * 100,
+                / len(self.audit_history)
+                * 100,
                 1,
             ),
         }
@@ -556,15 +563,17 @@ class TaskCoordinatorAgent(BaseAgent):
         execution_plan = []
 
         for i, subtask in enumerate(subtasks, 1):
-            execution_plan.append({
-                "sequence": i,
-                "task_id": subtask["task_id"],
-                "task_type": subtask["task_type"],
-                "name": subtask["name"],
-                "description": subtask["description"],
-                "assigned_agent_type": assignments.get(subtask["task_id"], "unknown"),
-                "priority": subtask["priority"],
-            })
+            execution_plan.append(
+                {
+                    "sequence": i,
+                    "task_id": subtask["task_id"],
+                    "task_type": subtask["task_type"],
+                    "name": subtask["name"],
+                    "description": subtask["description"],
+                    "assigned_agent_type": assignments.get(subtask["task_id"], "unknown"),
+                    "priority": subtask["priority"],
+                }
+            )
 
         return execution_plan
 

@@ -142,7 +142,9 @@ def test_engine_filters_by_min_severity():
 
 
 def test_engine_missing_metrics_reported():
-    engine = RuleEngine([_credit_rule(metric="npl_ratio"), _credit_rule(rule_id="T2", metric="lcr")])
+    engine = RuleEngine(
+        [_credit_rule(metric="npl_ratio"), _credit_rule(rule_id="T2", metric="lcr")]
+    )
     missing = engine.missing_metrics({"npl_ratio": 3.0})
     assert missing == ["lcr"]
 

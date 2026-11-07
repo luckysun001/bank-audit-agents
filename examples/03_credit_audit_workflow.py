@@ -5,14 +5,14 @@
 """
 
 import asyncio
-import sys
 import os
+import sys
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from bank_audit_agents.workflows.audit_pipeline import AuditPipeline, CreditAuditWorkflow
 from bank_audit_agents.utils.logger import get_logger
+from bank_audit_agents.workflows.audit_pipeline import AuditPipeline, CreditAuditWorkflow
 
 logger = get_logger("example_03")
 
@@ -53,7 +53,7 @@ async def main():
     start_time = datetime.now()
 
     workflow = CreditAuditWorkflow().build()
-    print(f"📝 工作流步骤:")
+    print("📝 工作流步骤:")
     for i, step in enumerate(workflow.steps, 1):
         print(f"   {i}. {step.step_name}: {step.description}")
     print()
@@ -93,10 +93,10 @@ async def main():
 
     # 模拟风险分布
     print("📈 风险分布:")
-    print(f"   🔴 严重风险: 2 个")
-    print(f"   🟠 高风险: 3 个")
-    print(f"   🟡 中风险: 5 个")
-    print(f"   🟢 低风险: 2 个")
+    print("   🔴 严重风险: 2 个")
+    print("   🟠 高风险: 3 个")
+    print("   🟡 中风险: 5 个")
+    print("   🟢 低风险: 2 个")
     print()
 
     # 主要风险点

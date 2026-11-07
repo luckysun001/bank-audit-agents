@@ -24,5 +24,13 @@ jobs:
         run: pipx install poetry
       - name: 安装依赖
         run: poetry install --with dev
+      - name: 安装 Lint 工具
+        run: pip install "black==24.4.2" "isort==5.13.2" "ruff==0.6.9"
+      - name: Lint (ruff)
+        run: ruff check .
+      - name: 格式检查 (black)
+        run: black --check .
+      - name: 导入顺序检查 (isort)
+        run: isort --check-only .
       - name: 运行测试
         run: poetry run pytest

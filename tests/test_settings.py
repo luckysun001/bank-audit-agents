@@ -1,11 +1,6 @@
 """配置模块测试：默认值、环境判定、智能体配置、单例。"""
 
-from bank_audit_agents.config.settings import (
-    AgentType,
-    Settings,
-    WorkflowType,
-    get_settings,
-)
+from bank_audit_agents.config.settings import AgentType, Settings, WorkflowType, get_settings
 
 
 def _settings(**overrides) -> Settings:
@@ -21,8 +16,15 @@ def test_default_values():
     assert s.llm_max_tokens == 4096
     assert s.api_cors_origins == ["http://localhost:8501"]
     assert s.sensitive_fields == [
-        "password", "api_key", "secret", "token", "credential",
-        "account_number", "id_card", "phone", "email",
+        "password",
+        "api_key",
+        "secret",
+        "token",
+        "credential",
+        "account_number",
+        "id_card",
+        "phone",
+        "email",
     ]
     assert s.report_formats == ["md", "docx", "pdf"]
 

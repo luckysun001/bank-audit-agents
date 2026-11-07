@@ -9,20 +9,16 @@
 5. 添加验证方法
 """
 
-import uuid
 import time
+import uuid
 from abc import ABC, abstractmethod
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Callable, Tuple
-from enum import Enum
 from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from bank_audit_agents.config.settings import Settings, AgentType, get_settings
-from bank_audit_agents.tools.base import (
-    ToolResult,
-    ToolSpec,
-    get_default_registry,
-)
+from bank_audit_agents.config.settings import AgentType, Settings, get_settings
+from bank_audit_agents.tools.base import ToolResult, ToolSpec, get_default_registry
 from bank_audit_agents.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -30,6 +26,7 @@ logger = get_logger(__name__)
 
 class AgentStatus(str, Enum):
     """智能体状态枚举"""
+
     IDLE = "idle"
     RUNNING = "running"
     WAITING = "waiting"
@@ -40,6 +37,7 @@ class AgentStatus(str, Enum):
 
 class TaskStatus(str, Enum):
     """任务状态枚举"""
+
     PENDING = "pending"
     ASSIGNED = "assigned"
     IN_PROGRESS = "in_progress"
@@ -59,6 +57,7 @@ MessageCallback = Callable[["AgentMessage"], None]
 @dataclass
 class AgentMessage:
     """智能体间通信消息"""
+
     message_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     sender_id: str = ""
     receiver_id: str = ""
@@ -138,6 +137,7 @@ class AgentMessage:
 @dataclass
 class Task:
     """任务对象"""
+
     task_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     task_type: str = ""
     description: str = ""
@@ -254,6 +254,7 @@ class Task:
 @dataclass
 class AgentResult:
     """智能体执行结果"""
+
     agent_id: str
     agent_type: str
     success: bool
@@ -543,7 +544,9 @@ class BaseAgent(ABC):
         """
         self.inbox.append(message)
 
-        logger.debug(f"📥 智能体收到消息: {self.agent_id} <- {message.sender_id}, 类型: {message.message_type}")
+        logger.debug(
+            f"📥 智能体收到消息: {self.agent_id} <- {message.sender_id}, 类型: {message.message_type}"
+        )
 
         if self.on_message_received:
             try:

@@ -33,8 +33,7 @@ AMOUNT_UNIT_FACTORS: Dict[str, float] = {
 }
 
 _AMOUNT_PATTERN = re.compile(
-    r"(?<![\d.])(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*"
-    r"(亿元|千万元|百万元|万元|元)"
+    r"(?<![\d.])(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*" r"(亿元|千万元|百万元|万元|元)"
 )
 
 _PERCENT_PATTERN = re.compile(r"(\d+(?:\.\d+)?)\s*[％%]")

@@ -2,15 +2,16 @@
 银行审计多智能体平台 智能体模块索引
 """
 
+from bank_audit_agents.agents.compliance_checker import ComplianceCheckerAgent
+
 # 导入智能体类型
 from bank_audit_agents.agents.document_parser import DocumentParserAgent
-from bank_audit_agents.agents.risk_identifier import RiskIdentifierAgent
-from bank_audit_agents.agents.compliance_checker import ComplianceCheckerAgent
-from bank_audit_agents.agents.report_writer import ReportWriterAgent
 from bank_audit_agents.agents.quality_and_coordinator import (
     QualityAuditorAgent,
     TaskCoordinatorAgent,
 )
+from bank_audit_agents.agents.report_writer import ReportWriterAgent
+from bank_audit_agents.agents.risk_identifier import RiskIdentifierAgent
 
 __all__ = [
     "DocumentParserAgent",

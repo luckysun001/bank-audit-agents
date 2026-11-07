@@ -1,14 +1,17 @@
 """
 银行审计多智能体系统配置
 """
+
 from enum import Enum
 from typing import List, Optional
+
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
 class AgentType(str, Enum):
     """智能体类型枚举"""
+
     DOCUMENT_PARSER = "document_parser"
     RISK_IDENTIFIER = "risk_identifier"
     COMPLIANCE_CHECKER = "compliance_checker"
@@ -19,6 +22,7 @@ class AgentType(str, Enum):
 
 class WorkflowType(str, Enum):
     """工作流类型枚举"""
+
     CREDIT_AUDIT = "credit_audit"
     COMPLIANCE_AUDIT = "compliance_audit"
     FINANCIAL_AUDIT = "financial_audit"
@@ -29,6 +33,7 @@ class WorkflowType(str, Enum):
 
 class AgentConfig(BaseSettings):
     """智能体配置"""
+
     model_config = {"extra": "allow"}
 
     agent_type: AgentType
@@ -49,6 +54,7 @@ class AgentConfig(BaseSettings):
 
 class Settings(BaseSettings):
     """全局配置"""
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
@@ -134,10 +140,19 @@ class Settings(BaseSettings):
     # 安全配置
     api_key_enabled: bool = True
     api_keys: List[str] = Field(default_factory=list)
-    sensitive_fields: List[str] = Field(default_factory=lambda: [
-        "password", "api_key", "secret", "token", "credential",
-        "account_number", "id_card", "phone", "email",
-    ])
+    sensitive_fields: List[str] = Field(
+        default_factory=lambda: [
+            "password",
+            "api_key",
+            "secret",
+            "token",
+            "credential",
+            "account_number",
+            "id_card",
+            "phone",
+            "email",
+        ]
+    )
 
     # =========================================================================
     # 方法
@@ -164,7 +179,11 @@ class Settings(BaseSettings):
                 name="合规检查智能体",
                 description="对照监管政策和行内制度，进行合规性核查",
                 temperature=0.1,
-                enabled_tools=["regulation_retriever", "compliance_checker", "violation_classifier"],
+                enabled_tools=[
+                    "regulation_retriever",
+                    "compliance_checker",
+                    "violation_classifier",
+                ],
             ),
             AgentType.REPORT_WRITER: AgentConfig(
                 agent_type=AgentType.REPORT_WRITER,

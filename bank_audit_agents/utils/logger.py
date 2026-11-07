@@ -1,6 +1,7 @@
 """
 日志工具模块
 """
+
 import json
 import logging
 import sys

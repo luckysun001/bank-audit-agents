@@ -22,50 +22,42 @@ __version__ = "1.0.0"
 __author__ = "Bank AI Lab"
 __description__ = "基于多智能体系统的银行审计智能化解决方案"
 
+# 导出所有智能体
+from bank_audit_agents.agents import (
+    ComplianceCheckerAgent,
+    DocumentParserAgent,
+    QualityAuditorAgent,
+    ReportWriterAgent,
+    RiskIdentifierAgent,
+    TaskCoordinatorAgent,
+)
+
+# 导出配置
+from bank_audit_agents.config.settings import AgentType, Settings, WorkflowType, get_settings
+
 # 导出核心基类
 from bank_audit_agents.core.base_agent import (
+    AgentMessage,
+    AgentResult,
+    AgentStatus,
     BaseAgent,
     Task,
-    AgentResult,
-    AgentMessage,
-    AgentStatus,
     TaskStatus,
 )
 
 # 导出协调器
-from bank_audit_agents.core.orchestrator import (
-    AgentOrchestrator,
-    OrchestratorStatus,
-)
-
-# 导出所有智能体
-from bank_audit_agents.agents import (
-    DocumentParserAgent,
-    RiskIdentifierAgent,
-    ComplianceCheckerAgent,
-    ReportWriterAgent,
-    QualityAuditorAgent,
-    TaskCoordinatorAgent,
-)
+from bank_audit_agents.core.orchestrator import AgentOrchestrator, OrchestratorStatus
 
 # 导出工作流
 from bank_audit_agents.workflows.audit_pipeline import (
     AuditPipeline,
-    WorkflowExecutor,
-    WorkflowTemplate,
-    WorkflowStep,
-    WorkflowResult,
-    CreditAuditWorkflow,
     ComplianceAuditWorkflow,
+    CreditAuditWorkflow,
     FinancialAuditWorkflow,
-)
-
-# 导出配置
-from bank_audit_agents.config.settings import (
-    Settings,
-    AgentType,
-    WorkflowType,
-    get_settings,
+    WorkflowExecutor,
+    WorkflowResult,
+    WorkflowStep,
+    WorkflowTemplate,
 )
 
 __all__ = [

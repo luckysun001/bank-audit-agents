@@ -5,15 +5,15 @@
 """
 
 import asyncio
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from bank_audit_agents.core.orchestrator import AgentOrchestrator
-from bank_audit_agents.core.base_agent import Task
 from bank_audit_agents.agents.document_parser import DocumentParserAgent
 from bank_audit_agents.agents.risk_identifier import RiskIdentifierAgent
+from bank_audit_agents.core.base_agent import Task
+from bank_audit_agents.core.orchestrator import AgentOrchestrator
 from bank_audit_agents.utils.logger import get_logger
 
 logger = get_logger("example_02")

@@ -2,23 +2,20 @@
 风险识别智能体
 深度分析文档内容，识别各类审计风险点
 """
+
 import json
 from typing import Any, Dict, List, Optional
 
-from bank_audit_agents.core.base_agent import (
-    AgentResult,
-    AgentType,
-    BaseAgent,
-    Task,
-)
-from bank_audit_agents.utils.logger import get_logger
+from bank_audit_agents.core.base_agent import AgentResult, AgentType, BaseAgent, Task
 from bank_audit_agents.utils.llm_client import get_llm_client
+from bank_audit_agents.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
 class RiskLevel(str):
     """风险等级"""
+
     CRITICAL = "critical"
     HIGH = "high"
     MEDIUM = "medium"
@@ -123,9 +120,7 @@ class RiskIdentifierAgent(BaseAgent):
             )
 
         # 执行风险识别（LLM 驱动，mock 模式下回退到示例数据）
-        identified_risks = await self._identify_risks(
-            document_content, document_type, risk_focus
-        )
+        identified_risks = await self._identify_risks(document_content, document_type, risk_focus)
 
         # 风险评级
         rated_risks = self._rate_risks(identified_risks)
@@ -168,17 +163,21 @@ class RiskIdentifierAgent(BaseAgent):
         - LLM 模式：将文档内容发送给 LLM 进行风险分析
         - Mock 模式：返回示例风险数据
         """
-        user_prompt = json.dumps({
-            "document_content": content[:4000],
-            "document_type": document_type,
-            "risk_focus": risk_focus,
-        }, ensure_ascii=False)
+        user_prompt = json.dumps(
+            {
+                "document_content": content[:4000],
+                "document_type": document_type,
+                "risk_focus": risk_focus,
+            },
+            ensure_ascii=False,
+        )
 
         def _mock_fallback():
             return self._get_mock_risks(risk_focus)
 
         result = await self._llm.call_with_fallback(
-            system_prompt=self.get_system_prompt() + "\n\n请以 JSON 格式返回结果，包含一个 'risks' 数组，每个元素包含字段：risk_id, description, category, level(critical/high/medium/low), location, evidence, likelihood(0-1)。",
+            system_prompt=self.get_system_prompt()
+            + "\n\n请以 JSON 格式返回结果，包含一个 'risks' 数组，每个元素包含字段：risk_id, description, category, level(critical/high/medium/low), location, evidence, likelihood(0-1)。",
             user_prompt=user_prompt,
             fallback_fn=_mock_fallback,
             response_format_json=True,
@@ -194,9 +193,18 @@ class RiskIdentifierAgent(BaseAgent):
 
         # 确保每个风险都有 level 字段
         for risk in risks:
-            if "level" not in risk:
-                risk["level"] = RiskLevel.MEDIUM
-            elif isinstance(risk["level"], str) and risk["level"].upper() not in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"):
+            if (
+                "level" not in risk
+                or isinstance(risk["level"], str)
+                and risk["level"].upper()
+                not in (
+                    "CRITICAL",
+                    "HIGH",
+                    "MEDIUM",
+                    "LOW",
+                    "INFO",
+                )
+            ):
                 risk["level"] = RiskLevel.MEDIUM
 
         return risks
@@ -315,9 +323,7 @@ class RiskIdentifierAgent(BaseAgent):
         # 高优先级风险建议
         high_risks = [r for r in risks if r["level"] in [RiskLevel.CRITICAL, RiskLevel.HIGH]]
         if high_risks:
-            recommendations.append(
-                f"⚠️ 立即关注{len(high_risks)}个高/严重风险点，制定专项整改方案"
-            )
+            recommendations.append(f"⚠️ 立即关注{len(high_risks)}个高/严重风险点，制定专项整改方案")
 
         # 分类建议
         categories = set(r["category"] for r in risks)

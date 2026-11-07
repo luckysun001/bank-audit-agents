@@ -9,16 +9,15 @@ import pytest
 
 from bank_audit_agents.utils import security
 from bank_audit_agents.utils.security import (
-    AuditLogger,
     AuditLogEntry,
+    AuditLogger,
     DataMasker,
     InputValidator,
+    SecurityEventType,
     _constant_time_compare,
     create_audit_middleware,
     verify_api_key,
 )
-from bank_audit_agents.utils.security import SecurityEventType
-
 
 # ---------------------------------------------------------------------------
 # 输入校验 InputValidator

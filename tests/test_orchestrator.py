@@ -2,21 +2,12 @@
 协调器测试
 """
 
-import pytest
 import asyncio
 
-from bank_audit_agents.core.orchestrator import (
-    AgentOrchestrator,
-    OrchestratorStatus,
-)
-from bank_audit_agents.core.base_agent import (
-    BaseAgent,
-    Task,
-    AgentResult,
-    AgentStatus,
-    AgentType,
-    TaskStatus,
-)
+import pytest
+
+from bank_audit_agents.core.base_agent import AgentResult, AgentType, BaseAgent, Task, TaskStatus
+from bank_audit_agents.core.orchestrator import AgentOrchestrator, OrchestratorStatus
 
 
 class MockTestAgent(BaseAgent):

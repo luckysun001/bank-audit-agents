@@ -2,9 +2,10 @@
 LLM 客户端模块
 统一封装 OpenAI / LangChain LLM 调用，支持 mock fallback
 """
-import json
+
 import asyncio
 import hashlib
+import json
 from typing import Any, Dict, Optional
 
 from bank_audit_agents.config.settings import get_settings
@@ -29,6 +30,7 @@ class LLMClient:
         if self._is_available:
             try:
                 from openai import AsyncOpenAI
+
                 self._client = AsyncOpenAI(
                     api_key=self.settings.openai_api_key,
                     base_url=self.settings.openai_base_url or None,
@@ -86,7 +88,9 @@ class LLMClient:
         temp = temperature if temperature is not None else self.settings.llm_temperature
         tokens = max_tokens or self.settings.llm_max_tokens
 
-        cache_key = self._make_cache_key(system_prompt, user_prompt, temp, tokens, response_format_json)
+        cache_key = self._make_cache_key(
+            system_prompt, user_prompt, temp, tokens, response_format_json
+        )
         if cache_key in self._response_cache:
             logger.debug("LLM 响应命中本地缓存")
             return self._response_cache[cache_key]
@@ -117,7 +121,7 @@ class LLMClient:
             except Exception as e:
                 logger.warning(f"LLM 调用失败（第 {attempt + 1} 次）: {e}")
                 if attempt < self.settings.llm_max_retries - 1:
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(2**attempt)
                 else:
                     raise
 

@@ -10,24 +10,20 @@
 """
 
 import json
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from dataclasses import dataclass, field
 
-from bank_audit_agents.core.base_agent import (
-    AgentResult,
-    AgentType,
-    BaseAgent,
-    Task,
-)
-from bank_audit_agents.utils.logger import get_logger
+from bank_audit_agents.core.base_agent import AgentResult, AgentType, BaseAgent, Task
 from bank_audit_agents.utils.llm_client import get_llm_client
+from bank_audit_agents.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
 class ReportFormat(str):
     """报告格式"""
+
     MARKDOWN = "markdown"
     HTML = "html"
     PLAIN_TEXT = "plain_text"
@@ -35,6 +31,7 @@ class ReportFormat(str):
 
 class ReportStyle(str):
     """报告风格"""
+
     STANDARD = "standard"
     CONCISE = "concise"
     DETAILED = "detailed"
@@ -44,6 +41,7 @@ class ReportStyle(str):
 @dataclass
 class ReportSection:
     """报告章节"""
+
     title: str
     content: str
     order: int = 0
@@ -57,6 +55,7 @@ class ReportSection:
 @dataclass
 class AuditFinding:
     """审计发现项"""
+
     finding_id: str
     category: str
     risk_level: str  # critical, high, medium, low
@@ -148,9 +147,7 @@ class ReportTemplate:
         # 按风险等级排序
         sorted_findings = sorted(
             findings,
-            key=lambda f: {"critical": 0, "high": 1, "medium": 2, "low": 3}.get(
-                f.risk_level, 99
-            ),
+            key=lambda f: {"critical": 0, "high": 1, "medium": 2, "low": 3}.get(f.risk_level, 99),
         )
 
         for finding in sorted_findings:
@@ -331,7 +328,12 @@ class ReportWriterAgent(BaseAgent):
                 agent_type=self.agent_type.value,
                 success=True,
                 summary=summary,
-                findings=[{"type": "report_generated", "content": f"报告包含 {len(processed_findings)} 个发现项"}],
+                findings=[
+                    {
+                        "type": "report_generated",
+                        "content": f"报告包含 {len(processed_findings)} 个发现项",
+                    }
+                ],
                 recommendations=recommendations,
                 confidence_score=0.95,
                 output_data={
@@ -406,9 +408,7 @@ class ReportWriterAgent(BaseAgent):
             "low": 2,
         }
 
-        total_deduction = sum(
-            weights.get(f.risk_level.lower(), 5) for f in findings
-        )
+        total_deduction = sum(weights.get(f.risk_level.lower(), 5) for f in findings)
 
         return max(100.0 - total_deduction, 0.0)
 
@@ -442,8 +442,7 @@ class ReportWriterAgent(BaseAgent):
         )
 
         recommendations.append(
-            "加强员工培训，提升合规意识和风险防范能力，"
-            "建立健全内部控制长效机制。"
+            "加强员工培训，提升合规意识和风险防范能力，" "建立健全内部控制长效机制。"
         )
 
         return recommendations
@@ -499,16 +498,25 @@ class ReportWriterAgent(BaseAgent):
 
     async def _generate_recommendations_llm(self, findings: List[AuditFinding]) -> List[str]:
         """使用 LLM 生成整改建议（mock 模式下回退到模板生成）"""
-        findings_summary = json.dumps([
-            {"category": f.category, "risk_level": f.risk_level, "title": f.title, "description": f.description}
-            for f in findings
-        ], ensure_ascii=False)
+        findings_summary = json.dumps(
+            [
+                {
+                    "category": f.category,
+                    "risk_level": f.risk_level,
+                    "title": f.title,
+                    "description": f.description,
+                }
+                for f in findings
+            ],
+            ensure_ascii=False,
+        )
 
         def _template_fallback():
             return self._generate_recommendations(findings)
 
         result = await self._llm.call_with_fallback(
-            system_prompt=self.get_system_prompt() + "\n\n请以 JSON 格式返回结果，包含一个 'recommendations' 数组，每个元素是一个字符串。",
+            system_prompt=self.get_system_prompt()
+            + "\n\n请以 JSON 格式返回结果，包含一个 'recommendations' 数组，每个元素是一个字符串。",
             user_prompt=f"根据以下审计发现，生成有针对性的整改建议：\n{findings_summary}",
             fallback_fn=_template_fallback,
             response_format_json=True,

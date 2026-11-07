@@ -8,26 +8,17 @@
 """
 
 from bank_audit_agents.tools.base import (
-    ToolResult,
     ToolRegistry,
+    ToolResult,
     ToolSpec,
     get_default_registry,
     reset_default_registry,
     tool,
 )
-from bank_audit_agents.tools.rules import (
-    DEFAULT_RULES,
-    AuditRule,
-    RuleCategory,
-    RuleEngine,
-    RuleFinding,
-    RuleSeverity,
-    build_default_engine,
-)
 from bank_audit_agents.tools.document_loader import (
-    MissingDependencyError,
-    ExtractedDocument,
     SUPPORTED_EXTENSIONS,
+    ExtractedDocument,
+    MissingDependencyError,
     extract_document_text,
     load_document_text,
     ocr_image,
@@ -41,6 +32,15 @@ from bank_audit_agents.tools.document_tools import (
     extract_percentages,
     split_sections,
     summarize_document,
+)
+from bank_audit_agents.tools.rules import (
+    DEFAULT_RULES,
+    AuditRule,
+    RuleCategory,
+    RuleEngine,
+    RuleFinding,
+    RuleSeverity,
+    build_default_engine,
 )
 
 __all__ = [

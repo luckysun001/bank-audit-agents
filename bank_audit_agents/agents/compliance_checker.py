@@ -2,23 +2,20 @@
 合规检查智能体
 对照监管政策和行内制度，进行合规性核查
 """
+
 import json
 from typing import Any, Dict, List, Optional
 
-from bank_audit_agents.core.base_agent import (
-    AgentResult,
-    AgentType,
-    BaseAgent,
-    Task,
-)
-from bank_audit_agents.utils.logger import get_logger
+from bank_audit_agents.core.base_agent import AgentResult, AgentType, BaseAgent, Task
 from bank_audit_agents.utils.llm_client import get_llm_client
+from bank_audit_agents.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
 class ComplianceLevel(str):
     """合规等级"""
+
     FULLY_COMPLIANT = "fully_compliant"
     MOSTLY_COMPLIANT = "mostly_compliant"
     PARTIALLY_COMPLIANT = "partially_compliant"
@@ -48,7 +45,10 @@ class ComplianceCheckerAgent(BaseAgent):
         "aml": [
             {"name": "《中华人民共和国反洗钱法》", "code": "主席令第56号"},
             {"name": "《金融机构反洗钱规定》", "code": "中国人民银行令〔2006〕第1号"},
-            {"name": "《金融机构大额交易和可疑交易报告管理办法》", "code": "中国人民银行令〔2016〕第3号"},
+            {
+                "name": "《金融机构大额交易和可疑交易报告管理办法》",
+                "code": "中国人民银行令〔2016〕第3号",
+            },
         ],
         "internal_control": [
             {"name": "《商业银行内部控制指引》", "code": "银监发〔2014〕40号"},
@@ -167,17 +167,21 @@ class ComplianceCheckerAgent(BaseAgent):
                 if name == fw_key:
                     framework_names.extend([item["name"] for item in items])
 
-        user_prompt = json.dumps({
-            "audit_content": content[:4000],
-            "business_type": business_type,
-            "applicable_frameworks": framework_names,
-        }, ensure_ascii=False)
+        user_prompt = json.dumps(
+            {
+                "audit_content": content[:4000],
+                "business_type": business_type,
+                "applicable_frameworks": framework_names,
+            },
+            ensure_ascii=False,
+        )
 
         def _mock_fallback():
             return self._get_mock_violations(frameworks)
 
         result = await self._llm.call_with_fallback(
-            system_prompt=self.get_system_prompt() + "\n\n请以 JSON 格式返回结果，包含一个 'violations' 数组，每个元素包含字段：violation_id, category, framework, article, description, severity(严重/较重/一般/轻微), evidence, impact。",
+            system_prompt=self.get_system_prompt()
+            + "\n\n请以 JSON 格式返回结果，包含一个 'violations' 数组，每个元素包含字段：violation_id, category, framework, article, description, severity(严重/较重/一般/轻微), evidence, impact。",
             user_prompt=user_prompt,
             fallback_fn=_mock_fallback,
             response_format_json=True,
@@ -246,8 +250,7 @@ class ComplianceCheckerAgent(BaseAgent):
         violations = []
         for violation in mock_violations:
             category_eng = next(
-                (k for k, v in framework_mapping.items() if v == violation["category"]),
-                None
+                (k for k, v in framework_mapping.items() if v == violation["category"]), None
             )
             if category_eng in frameworks:
                 violations.append(violation)
@@ -325,9 +328,7 @@ class ComplianceCheckerAgent(BaseAgent):
                 suggestions.append(f"   - {v['description']}")
 
         if other_violations:
-            suggestions.append(
-                f"📋 限期整改{len(other_violations)}项一般/轻微违规，1个月内完成"
-            )
+            suggestions.append(f"📋 限期整改{len(other_violations)}项一般/轻微违规，1个月内完成")
 
         # 通用建议
         suggestions.append("📚 组织相关业务人员进行监管政策再培训")

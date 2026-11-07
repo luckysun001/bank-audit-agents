@@ -2,10 +2,11 @@
 审计工作流编排系统
 定义和执行各种标准化的审计工作流程
 """
+
 from abc import ABC, abstractmethod
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from dataclasses import dataclass, field, asdict
 
 from bank_audit_agents.core.base_agent import Task
 from bank_audit_agents.core.orchestrator import AgentOrchestrator
@@ -16,6 +17,7 @@ logger = get_logger(__name__)
 
 class WorkflowStatus(str):
     """工作流状态"""
+
     CREATED = "created"
     RUNNING = "running"
     PAUSED = "paused"
@@ -27,6 +29,7 @@ class WorkflowStatus(str):
 @dataclass
 class WorkflowStep:
     """工作流步骤"""
+
     step_id: str
     step_name: str
     description: str
@@ -45,6 +48,7 @@ class WorkflowStep:
 @dataclass
 class WorkflowResult:
     """工作流执行结果"""
+
     workflow_id: str
     workflow_name: str
     success: bool
@@ -116,61 +120,71 @@ class CreditAuditWorkflow(WorkflowTemplate):
 
     def build(self) -> WorkflowTemplate:
         # Step 1: 信贷文档解析
-        self.add_step(WorkflowStep(
-            step_id="document_parsing",
-            step_name="文档解析",
-            description="解析贷款合同、财务报表、审批文件等信贷资料",
-            task_type="document_processing",
-            target_agent_type="document_parser",
-            depends_on=[],
-        ))
+        self.add_step(
+            WorkflowStep(
+                step_id="document_parsing",
+                step_name="文档解析",
+                description="解析贷款合同、财务报表、审批文件等信贷资料",
+                task_type="document_processing",
+                target_agent_type="document_parser",
+                depends_on=[],
+            )
+        )
 
         # Step 2: 风险点识别
-        self.add_step(WorkflowStep(
-            step_id="risk_identification",
-            step_name="风险识别",
-            description="识别信贷业务中的各类风险点",
-            task_type="risk_identification",
-            target_agent_type="risk_identifier",
-            depends_on=["document_parsing"],
-            input_mapping={"document_content": "document_parsing.parsed_content"},
-        ))
+        self.add_step(
+            WorkflowStep(
+                step_id="risk_identification",
+                step_name="风险识别",
+                description="识别信贷业务中的各类风险点",
+                task_type="risk_identification",
+                target_agent_type="risk_identifier",
+                depends_on=["document_parsing"],
+                input_mapping={"document_content": "document_parsing.parsed_content"},
+            )
+        )
 
         # Step 3: 合规检查
-        self.add_step(WorkflowStep(
-            step_id="compliance_check",
-            step_name="合规检查",
-            description="对照监管政策进行合规性核查",
-            task_type="compliance_check",
-            target_agent_type="compliance_checker",
-            depends_on=["document_parsing"],
-            input_mapping={"audit_content": "document_parsing.parsed_content"},
-        ))
+        self.add_step(
+            WorkflowStep(
+                step_id="compliance_check",
+                step_name="合规检查",
+                description="对照监管政策进行合规性核查",
+                task_type="compliance_check",
+                target_agent_type="compliance_checker",
+                depends_on=["document_parsing"],
+                input_mapping={"audit_content": "document_parsing.parsed_content"},
+            )
+        )
 
         # Step 4: 报告生成（依赖风险识别和合规检查）
-        self.add_step(WorkflowStep(
-            step_id="report_generation",
-            step_name="报告生成",
-            description="整合风险识别和合规检查结果，生成审计报告",
-            task_type="report_generation",
-            target_agent_type="report_writer",
-            depends_on=["risk_identification", "compliance_check"],
-            input_mapping={
-                "findings": "risk_identification.findings",
-                "compliance_results": "compliance_check.findings",
-            },
-        ))
+        self.add_step(
+            WorkflowStep(
+                step_id="report_generation",
+                step_name="报告生成",
+                description="整合风险识别和合规检查结果，生成审计报告",
+                task_type="report_generation",
+                target_agent_type="report_writer",
+                depends_on=["risk_identification", "compliance_check"],
+                input_mapping={
+                    "findings": "risk_identification.findings",
+                    "compliance_results": "compliance_check.findings",
+                },
+            )
+        )
 
         # Step 5: 质量审核
-        self.add_step(WorkflowStep(
-            step_id="quality_audit",
-            step_name="质量审核",
-            description="对审计报告进行质量审核",
-            task_type="quality_audit",
-            target_agent_type="quality_auditor",
-            depends_on=["report_generation"],
-            input_mapping={"content": "report_generation.report_content"},
-        ))
+        self.add_step(
+            WorkflowStep(
+                step_id="quality_audit",
+                step_name="质量审核",
+                description="对审计报告进行质量审核",
+                task_type="quality_audit",
+                target_agent_type="quality_auditor",
+                depends_on=["report_generation"],
+                input_mapping={"content": "report_generation.report_content"},
+            )
+        )
 
         return self
 
@@ -189,64 +203,76 @@ class ComplianceAuditWorkflow(WorkflowTemplate):
 
     def build(self) -> WorkflowTemplate:
         # Step 1: 监管政策文档解析
-        self.add_step(WorkflowStep(
-            step_id="regulation_parsing",
-            step_name="监管政策解析",
-            description="解析最新的监管政策文件，提取关键合规要求",
-            task_type="document_processing",
-            target_agent_type="document_parser",
-            depends_on=[],
-        ))
+        self.add_step(
+            WorkflowStep(
+                step_id="regulation_parsing",
+                step_name="监管政策解析",
+                description="解析最新的监管政策文件，提取关键合规要求",
+                task_type="document_processing",
+                target_agent_type="document_parser",
+                depends_on=[],
+            )
+        )
 
         # Step 2: 业务资料解析
-        self.add_step(WorkflowStep(
-            step_id="business_parsing",
-            step_name="业务资料解析",
-            description="解析被审计业务的相关资料",
-            task_type="document_processing",
-            target_agent_type="document_parser",
-            depends_on=[],
-        ))
+        self.add_step(
+            WorkflowStep(
+                step_id="business_parsing",
+                step_name="业务资料解析",
+                description="解析被审计业务的相关资料",
+                task_type="document_processing",
+                target_agent_type="document_parser",
+                depends_on=[],
+            )
+        )
 
         # Step 3: 反洗钱专项检查
-        self.add_step(WorkflowStep(
-            step_id="aml_check",
-            step_name="反洗钱检查",
-            description="KYC、大额可疑交易、制裁筛查等反洗钱合规检查",
-            task_type="aml_check",
-            target_agent_type="compliance_checker",
-            depends_on=["business_parsing"],
-        ))
+        self.add_step(
+            WorkflowStep(
+                step_id="aml_check",
+                step_name="反洗钱检查",
+                description="KYC、大额可疑交易、制裁筛查等反洗钱合规检查",
+                task_type="aml_check",
+                target_agent_type="compliance_checker",
+                depends_on=["business_parsing"],
+            )
+        )
 
         # Step 4: 一般合规检查
-        self.add_step(WorkflowStep(
-            step_id="general_compliance",
-            step_name="一般合规检查",
-            description="对照监管政策进行全面合规检查",
-            task_type="compliance_check",
-            target_agent_type="compliance_checker",
-            depends_on=["regulation_parsing", "business_parsing"],
-        ))
+        self.add_step(
+            WorkflowStep(
+                step_id="general_compliance",
+                step_name="一般合规检查",
+                description="对照监管政策进行全面合规检查",
+                task_type="compliance_check",
+                target_agent_type="compliance_checker",
+                depends_on=["regulation_parsing", "business_parsing"],
+            )
+        )
 
         # Step 5: 合规报告生成
-        self.add_step(WorkflowStep(
-            step_id="compliance_report",
-            step_name="合规报告生成",
-            description="生成合规专项审计报告",
-            task_type="report_generation",
-            target_agent_type="report_writer",
-            depends_on=["aml_check", "general_compliance"],
-        ))
+        self.add_step(
+            WorkflowStep(
+                step_id="compliance_report",
+                step_name="合规报告生成",
+                description="生成合规专项审计报告",
+                task_type="report_generation",
+                target_agent_type="report_writer",
+                depends_on=["aml_check", "general_compliance"],
+            )
+        )
 
         # Step 6: 质量审核
-        self.add_step(WorkflowStep(
-            step_id="quality_audit",
-            step_name="质量审核",
-            description="对合规审计报告进行质量审核",
-            task_type="quality_audit",
-            target_agent_type="quality_auditor",
-            depends_on=["compliance_report"],
-        ))
+        self.add_step(
+            WorkflowStep(
+                step_id="quality_audit",
+                step_name="质量审核",
+                description="对合规审计报告进行质量审核",
+                task_type="quality_audit",
+                target_agent_type="quality_auditor",
+                depends_on=["compliance_report"],
+            )
+        )
 
         return self
 
@@ -264,40 +290,48 @@ class FinancialAuditWorkflow(WorkflowTemplate):
         )
 
     def build(self) -> WorkflowTemplate:
-        self.add_step(WorkflowStep(
-            step_id="financial_data_parsing",
-            step_name="财务数据解析",
-            description="解析财务报表、账户流水等财务数据",
-            task_type="document_processing",
-            target_agent_type="document_parser",
-        ))
+        self.add_step(
+            WorkflowStep(
+                step_id="financial_data_parsing",
+                step_name="财务数据解析",
+                description="解析财务报表、账户流水等财务数据",
+                task_type="document_processing",
+                target_agent_type="document_parser",
+            )
+        )
 
-        self.add_step(WorkflowStep(
-            step_id="anomaly_detection",
-            step_name="异常检测",
-            description="识别财务异常交易和异常指标",
-            task_type="risk_identification",
-            target_agent_type="risk_identifier",
-            depends_on=["financial_data_parsing"],
-        ))
+        self.add_step(
+            WorkflowStep(
+                step_id="anomaly_detection",
+                step_name="异常检测",
+                description="识别财务异常交易和异常指标",
+                task_type="risk_identification",
+                target_agent_type="risk_identifier",
+                depends_on=["financial_data_parsing"],
+            )
+        )
 
-        self.add_step(WorkflowStep(
-            step_id="financial_compliance",
-            step_name="财务合规检查",
-            description="检查财务制度执行和会计准则合规",
-            task_type="compliance_check",
-            target_agent_type="compliance_checker",
-            depends_on=["financial_data_parsing"],
-        ))
+        self.add_step(
+            WorkflowStep(
+                step_id="financial_compliance",
+                step_name="财务合规检查",
+                description="检查财务制度执行和会计准则合规",
+                task_type="compliance_check",
+                target_agent_type="compliance_checker",
+                depends_on=["financial_data_parsing"],
+            )
+        )
 
-        self.add_step(WorkflowStep(
-            step_id="financial_report",
-            step_name="财务审计报告",
-            description="生成财务审计报告",
-            task_type="report_generation",
-            target_agent_type="report_writer",
-            depends_on=["anomaly_detection", "financial_compliance"],
-        ))
+        self.add_step(
+            WorkflowStep(
+                step_id="financial_report",
+                step_name="财务审计报告",
+                description="生成财务审计报告",
+                task_type="report_generation",
+                target_agent_type="report_writer",
+                depends_on=["anomaly_detection", "financial_compliance"],
+            )
+        )
 
         return self
 
@@ -351,9 +385,7 @@ class WorkflowExecutor:
             step_outputs["__initial__"] = input_data
 
             for step in workflow_template.steps:
-                step_result = await self._execute_step(
-                    workflow_id, step, step_outputs, input_data
-                )
+                step_result = await self._execute_step(workflow_id, step, step_outputs, input_data)
                 step_outputs[step.step_id] = step_result
 
                 if not step_result.get("success", False) and step.required:
@@ -460,9 +492,7 @@ class WorkflowExecutor:
 
                 source_data = step_outputs[source_step]
                 # 简单的键值获取（实际可以支持更复杂的路径解析）
-                value = source_data.get("output", {}).get(
-                    source_key, source_data.get(source_key)
-                )
+                value = source_data.get("output", {}).get(source_key, source_data.get(source_key))
                 # 上游没产出时不要用 None 覆盖 initial_input 里的同名值，
                 # 否则下游拿到的就是"有这个键但值为空"，反而更难排查
                 if value is not None:

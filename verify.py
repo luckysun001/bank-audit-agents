@@ -6,7 +6,6 @@
 """
 
 import sys
-import asyncio
 from datetime import datetime
 
 print("=" * 70)
@@ -66,11 +65,11 @@ print("📋 第 3 步: 验证智能体实例化")
 
 try:
     from bank_audit_agents.agents import (
-        DocumentParserAgent,
-        RiskIdentifierAgent,
         ComplianceCheckerAgent,
-        ReportWriterAgent,
+        DocumentParserAgent,
         QualityAuditorAgent,
+        ReportWriterAgent,
+        RiskIdentifierAgent,
         TaskCoordinatorAgent,
     )
 
@@ -104,7 +103,7 @@ print()
 print("📋 第 4 步: 验证核心功能")
 
 try:
-    from bank_audit_agents.core.base_agent import Task, AgentResult, TaskStatus
+    from bank_audit_agents.core.base_agent import AgentResult, Task, TaskStatus
 
     # 测试任务创建
     task = Task(
@@ -119,7 +118,7 @@ try:
     assert task.status == TaskStatus.IN_PROGRESS
     task.complete({"result": "ok"})
     assert task.status == TaskStatus.COMPLETED
-    print(f"   ✅ 任务状态变更正常")
+    print("   ✅ 任务状态变更正常")
 
     # 测试 AgentResult
     result = AgentResult(
@@ -150,7 +149,7 @@ try:
     orchestrator.register_agent(RiskIdentifierAgent())
 
     status = orchestrator.get_status()
-    print(f"   ✅ 协调器创建成功")
+    print("   ✅ 协调器创建成功")
     print(f"   ✅ 已注册智能体: {status['agents']['total_count']} 个")
 
 except Exception as e:
@@ -164,8 +163,8 @@ print("📋 第 6 步: 验证工作流模板")
 
 try:
     from bank_audit_agents.workflows.audit_pipeline import (
-        CreditAuditWorkflow,
         ComplianceAuditWorkflow,
+        CreditAuditWorkflow,
         FinancialAuditWorkflow,
     )
 

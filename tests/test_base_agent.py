@@ -2,17 +2,18 @@
 智能体基类测试
 """
 
-import pytest
 import asyncio
 
+import pytest
+
 from bank_audit_agents.core.base_agent import (
+    AgentMessage,
+    AgentResult,
+    AgentStatus,
+    AgentType,
     BaseAgent,
     Task,
-    AgentResult,
-    AgentMessage,
-    AgentStatus,
     TaskStatus,
-    AgentType,
 )
 
 
@@ -113,6 +114,7 @@ class TestTask:
     def test_task_duration(self):
         """测试任务执行时间计算"""
         import time
+
         task = Task(task_type="test", description="test")
         task.start()
         time.sleep(0.1)
@@ -221,11 +223,13 @@ class TestAgentCommunication:
 
         # 接收3条消息
         for i in range(3):
-            agent.receive_message(AgentMessage(
-                sender_id=f"sender_{i}",
-                receiver_id="agent1",
-                content={},
-            ))
+            agent.receive_message(
+                AgentMessage(
+                    sender_id=f"sender_{i}",
+                    receiver_id="agent1",
+                    content={},
+                )
+            )
 
         assert len(agent.inbox) == 3
 

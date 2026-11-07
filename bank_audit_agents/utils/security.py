@@ -3,15 +3,16 @@
 
 用于银行审计多智能体平台的安全加固。
 """
-import re
-import logging
-from typing import Any, Dict, List, Optional
-from datetime import datetime
-from dataclasses import dataclass, field
-from enum import Enum
-import json
 
-from fastapi import Request, HTTPException, Security
+import json
+import logging
+import re
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from fastapi import HTTPException, Request, Security
 from fastapi.security import APIKeyHeader
 
 logger = logging.getLogger(__name__)
@@ -21,6 +22,7 @@ API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 class SecurityEventType(str, Enum):
     """安全事件类型"""
+
     API_KEY_VALIDATED = "api_key_validated"
     API_KEY_REJECTED = "api_key_rejected"
     INPUT_VALIDATION_FAILED = "input_validation_failed"
@@ -31,6 +33,7 @@ class SecurityEventType(str, Enum):
 @dataclass
 class AuditLogEntry:
     """审计日志条目"""
+
     timestamp: datetime = field(default_factory=datetime.now)
     event_type: str = ""
     user_id: str = "anonymous"
@@ -173,8 +176,15 @@ class DataMasker:
     """敏感数据脱敏工具"""
 
     DEFAULT_SENSITIVE_FIELDS = [
-        "password", "api_key", "secret", "token", "credential",
-        "account_number", "id_card", "phone", "email",
+        "password",
+        "api_key",
+        "secret",
+        "token",
+        "credential",
+        "account_number",
+        "id_card",
+        "phone",
+        "email",
     ]
 
     # 脱敏规则
@@ -254,27 +264,33 @@ def verify_api_key(
         return "anonymous"
 
     if not api_key:
-        audit_logger.log(AuditLogEntry(
-            event_type=SecurityEventType.API_KEY_REJECTED.value,
-            detail="Missing API key",
-            status_code=401,
-        ))
+        audit_logger.log(
+            AuditLogEntry(
+                event_type=SecurityEventType.API_KEY_REJECTED.value,
+                detail="Missing API key",
+                status_code=401,
+            )
+        )
         raise HTTPException(status_code=401, detail="API Key required")
 
     # 使用恒定时间比较防止时序攻击
     for configured in configured_keys:
         if _constant_time_compare(api_key, configured):
-            audit_logger.log(AuditLogEntry(
-                event_type=SecurityEventType.API_KEY_VALIDATED.value,
-                status_code=200,
-            ))
+            audit_logger.log(
+                AuditLogEntry(
+                    event_type=SecurityEventType.API_KEY_VALIDATED.value,
+                    status_code=200,
+                )
+            )
             return api_key[:8] + "****"
 
-    audit_logger.log(AuditLogEntry(
-        event_type=SecurityEventType.API_KEY_REJECTED.value,
-        detail="Invalid API key",
-        status_code=401,
-    ))
+    audit_logger.log(
+        AuditLogEntry(
+            event_type=SecurityEventType.API_KEY_REJECTED.value,
+            detail="Invalid API key",
+            status_code=401,
+        )
+    )
     raise HTTPException(status_code=401, detail="Invalid API Key")
 
 
@@ -283,7 +299,7 @@ def _constant_time_compare(a: str, b: str) -> bool:
     if len(a) != len(b):
         return False
     result = 0
-    for x, y in zip(a, b):
+    for x, y in zip(a, b, strict=False):
         result |= ord(x) ^ ord(y)
     return result == 0
 
@@ -303,14 +319,16 @@ def create_audit_middleware(audit_log: Optional[AuditLogger] = None):
         response = await call_next(request)
 
         # 记录所有 API 调用
-        log.log(AuditLogEntry(
-            event_type="api_request",
-            endpoint=str(request.url.path),
-            method=request.method,
-            status_code=response.status_code,
-            client_ip=request.client.host if request.client else "",
-            metadata={"query_params": dict(request.query_params)},
-        ))
+        log.log(
+            AuditLogEntry(
+                event_type="api_request",
+                endpoint=str(request.url.path),
+                method=request.method,
+                status_code=response.status_code,
+                client_ip=request.client.host if request.client else "",
+                metadata={"query_params": dict(request.query_params)},
+            )
+        )
 
         return response
 

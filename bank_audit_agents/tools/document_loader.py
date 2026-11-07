@@ -121,9 +121,7 @@ def _extract_plain_text(path: Path, encoding: str = "utf-8") -> ExtractedDocumen
             continue
     else:  # pragma: no cover - 理论上 gb18030 能覆盖中文场景
         text = path.read_text(encoding="utf-8", errors="replace")
-    return ExtractedDocument(
-        text=text, source=str(path), method="plain_text", pages=1
-    )
+    return ExtractedDocument(text=text, source=str(path), method="plain_text", pages=1)
 
 
 def _extract_pdf(
@@ -179,9 +177,7 @@ def _extract_pdf(
             )
             return doc
 
-        doc.warnings.append(
-            f"平均每页仅 {chars_per_page:.0f} 字符，判定为扫描件，转 OCR"
-        )
+        doc.warnings.append(f"平均每页仅 {chars_per_page:.0f} 字符，判定为扫描件，转 OCR")
         try:
             ocr_text = ocr_pdf(path, lang=ocr_lang, max_pages=max_pages)
             if ocr_text.strip():

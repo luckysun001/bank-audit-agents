@@ -14,7 +14,7 @@
     数字表示，如 12.5 表示 12.5%）；缺失的指标会被记入 ``missing_metrics`` 而非误报。
 """
 
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from enum import Enum
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -40,12 +40,12 @@ _OPERATORS = ("lte", "lt", "gte", "gt", "eq", "ne")
 class RuleCategory(str, Enum):
     """规则分类"""
 
-    CREDIT = "credit"            # 信贷风险
-    CAPITAL = "capital"          # 资本充足
-    LIQUIDITY = "liquidity"      # 流动性
-    COMPLIANCE = "compliance"    # 合规 / 反洗钱
-    OPERATION = "operation"      # 内控与运营
-    FINANCIAL = "financial"      # 财务表现
+    CREDIT = "credit"  # 信贷风险
+    CAPITAL = "capital"  # 资本充足
+    LIQUIDITY = "liquidity"  # 流动性
+    COMPLIANCE = "compliance"  # 合规 / 反洗钱
+    OPERATION = "operation"  # 内控与运营
+    FINANCIAL = "financial"  # 财务表现
 
 
 class RuleSeverity(str, Enum):
@@ -270,7 +270,9 @@ class RuleEngine:
 
     def missing_metrics(self, context: Dict[str, Any]) -> List[str]:
         """返回上下文中缺失的指标键（用于提示数据不全，而非静默跳过）"""
-        return [r.metric for r in self.rules if r.metric not in context or context[r.metric] is None]
+        return [
+            r.metric for r in self.rules if r.metric not in context or context[r.metric] is None
+        ]
 
     def evaluate_report(
         self,
@@ -402,7 +404,6 @@ DEFAULT_RULES: List[AuditRule] = [
         regulation_ref="商业银行风险监管核心指标（监测参考）",
         recommendation="优化客户结构，控制大额客户授信总量",
     ),
-
     # ---------- 资本充足 ----------
     AuditRule(
         rule_id="CAPITAL-001",
@@ -456,7 +457,6 @@ DEFAULT_RULES: List[AuditRule] = [
         regulation_ref="《商业银行杠杆率管理办法》",
         recommendation="控制表外业务扩张，压降低风险权重资产规模",
     ),
-
     # ---------- 流动性 ----------
     AuditRule(
         rule_id="LIQUIDITY-001",
@@ -510,7 +510,6 @@ DEFAULT_RULES: List[AuditRule] = [
         regulation_ref="商业银行流动性风险监测指标（参考）",
         recommendation="关注存款增长与贷款投放节奏的匹配度",
     ),
-
     # ---------- 合规 / 反洗钱 ----------
     AuditRule(
         rule_id="COMPLIANCE-001",
@@ -616,7 +615,6 @@ DEFAULT_RULES: List[AuditRule] = [
         regulation_ref="反洗钱内控要求（参考）",
         recommendation="制定年度培训计划并留存签到与考核记录",
     ),
-
     # ---------- 内控与运营 ----------
     AuditRule(
         rule_id="OPERATION-001",
@@ -670,7 +668,6 @@ DEFAULT_RULES: List[AuditRule] = [
         regulation_ref="信息科技风险管理要求（参考）",
         recommendation="建立权限定期复核流程，及时清理冗余与离岗账户",
     ),
-
     # ---------- 财务表现（监测类） ----------
     AuditRule(
         rule_id="FINANCIAL-001",
