@@ -4,7 +4,7 @@
 import json
 import logging
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 
@@ -13,7 +13,9 @@ class JSONFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         log_record: Dict[str, Any] = {
-            "timestamp": datetime.utcnow().isoformat(),
+            # datetime.utcnow() 在 Python 3.12+ 已弃用（计划 3.16 移除）；
+            # 改用 timezone.utc 获取等价 UTC 时间，保持 naive ISO 输出与既有风格一致。
+            "timestamp": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
